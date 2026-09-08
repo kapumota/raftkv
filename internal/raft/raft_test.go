@@ -113,6 +113,64 @@ func TestNewNodeRebuildsStateMachineFromCommittedLog(t *testing.T) {
 	}
 }
 
+func TestRecoveredEntriesAreNotReapplied(t *testing.T) {
+	dir := t.TempDir()
+	wal, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	entries := []LogEntry{
+		{Term: 1, Index: 1, Command: Command{Op: "SET", Key: "a", Value: "1"}},
+		{Term: 2, Index: 2, Command: Command{Op: "SET", Key: "b", Value: "2"}},
+		{Term: 2, Index: 3, Command: Command{Op: "SET", Key: "c", Value: "3"}},
+	}
+	if err := wal.AppendEntries(entries); err != nil {
+		t.Fatalf("no se pudo preparar el log: %v", err)
+	}
+	if err := wal.SaveState(PersistentState{CurrentTerm: 2, CommitIndex: 2}); err != nil {
+		t.Fatalf("no se pudo guardar el estado: %v", err)
+	}
+
+	var applied []Command
+	restarted := NewNode("node-1", nil, wal, NewTransport(), func(cmd Command) {
+		applied = append(applied, cmd)
+	})
+	if len(applied) != 2 {
+		t.Fatalf("cantidad inesperada de comandos recuperados: se obtuvo %d, se esperaba 2", len(applied))
+	}
+
+	heartbeat := restarted.HandleAppendEntries(AppendEntriesArgs{
+		Term:         2,
+		LeaderID:     "node-2",
+		PrevLogIndex: 3,
+		PrevLogTerm:  2,
+		LeaderCommit: 2,
+	})
+	if !heartbeat.Success {
+		t.Fatal("se esperaba que el heartbeat fuera aceptado")
+	}
+	if len(applied) != 2 {
+		t.Fatalf("se reaplicaron comandos después del heartbeat: se obtuvo %d aplicaciones, se esperaba 2", len(applied))
+	}
+
+	advance := restarted.HandleAppendEntries(AppendEntriesArgs{
+		Term:         2,
+		LeaderID:     "node-2",
+		PrevLogIndex: 3,
+		PrevLogTerm:  2,
+		LeaderCommit: 3,
+	})
+	if !advance.Success {
+		t.Fatal("se esperaba que el avance de commit fuera aceptado")
+	}
+	if len(applied) != 3 {
+		t.Fatalf("cantidad inesperada de aplicaciones después del avance: se obtuvo %d, se esperaba 3", len(applied))
+	}
+	if applied[2] != entries[2].Command {
+		t.Fatalf("comando nuevo inesperado: se obtuvo %+v, se esperaba %+v", applied[2], entries[2].Command)
+	}
+}
+
 func TestProposalRespectsCanceledContext(t *testing.T) {
 	node := newTestNode(t, nil)
 	node.mu.Lock()
