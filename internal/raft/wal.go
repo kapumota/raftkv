@@ -19,6 +19,7 @@ type WAL struct {
 type PersistentState struct {
 	CurrentTerm int    `json:"current_term"`
 	VotedFor    string `json:"voted_for"`
+	CommitIndex int    `json:"commit_index"`
 }
 
 func NewWAL(dir string) (*WAL, error) {

@@ -55,6 +55,7 @@ func NewNode(id string, peers []string, wal *WAL, transport *Transport, apply Ap
 		currentTerm:    st.CurrentTerm,
 		votedFor:       st.VotedFor,
 		log:            log,
+		commitIndex:    validCommitIndex(st.CommitIndex, len(log)),
 		nextIndex:      map[string]int{},
 		matchIndex:     map[string]int{},
 		pendingCommits: map[int]chan error{},
@@ -63,8 +64,30 @@ func NewNode(id string, peers []string, wal *WAL, transport *Transport, apply Ap
 		apply:          apply,
 		stopCh:         make(chan struct{}),
 	}
+	// Reconstruye la máquina de estados solo con las entradas confirmadas antes
+	// del reinicio. Las entradas posteriores a commitIndex permanecen sin aplicar.
+	n.applyCommitted()
 	n.resetElectionTimer()
 	return n
+}
+
+func validCommitIndex(commitIndex, logLength int) int {
+	if commitIndex < 0 {
+		return 0
+	}
+	if commitIndex > logLength {
+		return logLength
+	}
+	return commitIndex
+}
+
+// saveState asume que el llamador ya mantiene bloqueado n.mu.
+func (n *Node) saveState() error {
+	return n.wal.SaveState(PersistentState{
+		CurrentTerm: n.currentTerm,
+		VotedFor:    n.votedFor,
+		CommitIndex: n.commitIndex,
+	})
 }
 
 // resetElectionTimer usa un tiempo de espera aleatorio amplio (1.5s-3s) porque en un
@@ -110,7 +133,7 @@ func (n *Node) startElection() {
 	if lastLogIndex > 0 {
 		lastLogTerm = n.log[lastLogIndex-1].Term
 	}
-	_ = n.wal.SaveState(PersistentState{CurrentTerm: term, VotedFor: n.id})
+	_ = n.saveState()
 	n.resetElectionTimer()
 	peers := append([]string{}, n.peers...)
 	n.mu.Unlock()
@@ -167,7 +190,7 @@ func (n *Node) becomeFollower(term int) {
 	n.state = Follower
 	n.currentTerm = term
 	n.votedFor = ""
-	_ = n.wal.SaveState(PersistentState{CurrentTerm: n.currentTerm, VotedFor: n.votedFor})
+	_ = n.saveState()
 	n.resetElectionTimer()
 	if wasLeader {
 		n.failPendingCommits(ErrNotLeader)
@@ -270,7 +293,13 @@ func (n *Node) advanceCommitIndex() {
 			}
 		}
 		if count > (len(n.peers)+1)/2 {
+			previousCommitIndex := n.commitIndex
 			n.commitIndex = idx
+			if err := n.saveState(); err != nil {
+				n.commitIndex = previousCommitIndex
+				n.failPendingCommits(err)
+				return
+			}
 			n.applyCommitted()
 			n.notifyCommitted()
 			break
@@ -334,7 +363,7 @@ func (n *Node) HandleRequestVote(args RequestVoteArgs) RequestVoteReply {
 
 	if (n.votedFor == "" || n.votedFor == args.CandidateID) && logOk {
 		n.votedFor = args.CandidateID
-		_ = n.wal.SaveState(PersistentState{CurrentTerm: n.currentTerm, VotedFor: n.votedFor})
+		_ = n.saveState()
 		n.resetElectionTimer()
 		reply.VoteGranted = true
 	}
@@ -371,10 +400,15 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs) AppendEntriesReply {
 	}
 
 	if args.LeaderCommit > n.commitIndex {
+		previousCommitIndex := n.commitIndex
 		if args.LeaderCommit < len(n.log) {
 			n.commitIndex = args.LeaderCommit
 		} else {
 			n.commitIndex = len(n.log)
+		}
+		if err := n.saveState(); err != nil {
+			n.commitIndex = previousCommitIndex
+			return reply
 		}
 		n.applyCommitted()
 	}

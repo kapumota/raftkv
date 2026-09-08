@@ -43,6 +43,55 @@ func stopNodeLoop(node *Node) {
 	}
 }
 
+func TestCommittedStateSurvivesNodeRestart(t *testing.T) {
+	dataDir := t.TempDir()
+
+	initialWAL, err := NewWAL(dataDir)
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL inicial: %v", err)
+	}
+	initialMachine := newTestStateMachine()
+	initialNode := NewNode("node-1", nil, initialWAL, NewTransport(), initialMachine.apply)
+	initialNode.mu.Lock()
+	initialNode.currentTerm = 1
+	initialNode.state = Leader
+	initialNode.mu.Unlock()
+
+	original := Command{Op: "SET", Key: "saldo", Value: "100"}
+	if err := initialNode.Propose(context.Background(), original); err != nil {
+		t.Fatalf("la escritura inicial no pudo confirmarse: %v", err)
+	}
+	value, ok := initialMachine.get("saldo")
+	if !ok || value != "100" {
+		t.Fatalf("valor inicial inesperado: se obtuvo %q, presente=%t", value, ok)
+	}
+
+	// Simula un reinicio descartando el estado en memoria y abriendo nuevamente
+	// los archivos persistentes desde el mismo directorio de datos.
+	recoveredWAL, err := NewWAL(dataDir)
+	if err != nil {
+		t.Fatalf("no se pudo reabrir el WAL: %v", err)
+	}
+	recoveredMachine := newTestStateMachine()
+	recoveredNode := NewNode("node-1", nil, recoveredWAL, NewTransport(), recoveredMachine.apply)
+
+	recoveredValue, recovered := recoveredMachine.get("saldo")
+	if !recovered {
+		t.Fatal("la escritura confirmada no fue reconstruida después del reinicio")
+	}
+	if recoveredValue != "100" {
+		t.Fatalf("valor recuperado inesperado: se obtuvo %q, se esperaba %q", recoveredValue, "100")
+	}
+
+	_, _, term, _, commitIndex := recoveredNode.Status()
+	if term != 1 {
+		t.Fatalf("término recuperado inesperado: se obtuvo %d, se esperaba 1", term)
+	}
+	if commitIndex != 1 {
+		t.Fatalf("índice de commit recuperado inesperado: se obtuvo %d, se esperaba 1", commitIndex)
+	}
+}
+
 func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	const nodeCount = 3
 
