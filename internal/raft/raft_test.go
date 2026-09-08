@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -17,9 +18,30 @@ func newTestNode(t *testing.T, apply ApplyFunc) *Node {
 func TestFollowerRejectsProposal(t *testing.T) {
 	node := newTestNode(t, nil)
 
-	err := node.Propose(Command{Op: "SET", Key: "a", Value: "1"})
+	err := node.Propose(context.Background(), Command{Op: "SET", Key: "a", Value: "1"})
 	if !errors.Is(err, ErrNotLeader) {
 		t.Fatalf("error inesperado: se obtuvo %v, se esperaba ErrNotLeader", err)
+	}
+}
+
+func TestProposalRespectsCanceledContext(t *testing.T) {
+	node := newTestNode(t, nil)
+	node.mu.Lock()
+	node.state = Leader
+	node.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := node.Propose(ctx, Command{Op: "SET", Key: "a", Value: "1"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error inesperado: se obtuvo %v, se esperaba context.Canceled", err)
+	}
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if len(node.log) != 0 {
+		t.Fatalf("el log cambió con un contexto cancelado: se obtuvo %d entradas", len(node.log))
 	}
 }
 

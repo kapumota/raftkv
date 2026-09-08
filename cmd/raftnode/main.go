@@ -59,7 +59,7 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := node.Propose(raft.Command{Op: "SET", Key: body.Key, Value: body.Value}); err != nil {
+		if err := node.Propose(r.Context(), raft.Command{Op: "SET", Key: body.Key, Value: body.Value}); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusMisdirectedRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "no_es_lider"})

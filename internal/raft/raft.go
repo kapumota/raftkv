@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"context"
 	"errors"
 	"math/rand"
 	"sync"
@@ -355,9 +356,14 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs) AppendEntriesReply {
 }
 
 // Propose agrega un comando al log si este nodo es el líder actual.
-// Devuelve ErrNotLeader (con el propio id como pista, ya que este nodo no
-// sabe con certeza quién es el líder) si no lo es.
-func (n *Node) Propose(cmd Command) error {
+// El contexto permite cancelar la propuesta antes de que sea procesada y
+// prepara la API para esperar el commit por mayoría en el siguiente parche.
+// Devuelve ErrNotLeader si el nodo no es el líder actual.
+func (n *Node) Propose(ctx context.Context, cmd Command) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	n.mu.Lock()
 	if n.state != Leader {
 		n.mu.Unlock()
