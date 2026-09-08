@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func newTestNode(t *testing.T, apply ApplyFunc) *Node {
@@ -91,5 +92,89 @@ func TestHandleAppendEntriesAppliesCommittedEntry(t *testing.T) {
 	}
 	if applied[0] != entry.Command {
 		t.Fatalf("comando aplicado inesperado: se obtuvo %+v, se esperaba %+v", applied[0], entry.Command)
+	}
+}
+
+func TestSingleNodeProposalCommitsImmediately(t *testing.T) {
+	var applied []Command
+	node := newTestNode(t, func(cmd Command) {
+		applied = append(applied, cmd)
+	})
+
+	node.mu.Lock()
+	node.state = Leader
+	node.currentTerm = 1
+	node.mu.Unlock()
+
+	cmd := Command{Op: "SET", Key: "saldo", Value: "100"}
+	if err := node.Propose(context.Background(), cmd); err != nil {
+		t.Fatalf("la propuesta falló: %v", err)
+	}
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if node.commitIndex != 1 {
+		t.Fatalf("índice de commit inesperado: se obtuvo %d, se esperaba 1", node.commitIndex)
+	}
+	if len(applied) != 1 || applied[0] != cmd {
+		t.Fatalf("comando aplicado inesperado: se obtuvo %+v", applied)
+	}
+}
+
+func TestProposalWaitsForMajorityCommit(t *testing.T) {
+	node := newTestNode(t, nil)
+	peer1 := "http://127.0.0.1:1"
+	peer2 := "http://127.0.0.1:2"
+
+	node.mu.Lock()
+	node.peers = []string{peer1, peer2}
+	node.state = Leader
+	node.currentTerm = 1
+	node.nextIndex[peer1] = 1
+	node.nextIndex[peer2] = 1
+	node.matchIndex[peer1] = 0
+	node.matchIndex[peer2] = 0
+	node.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- node.Propose(ctx, Command{Op: "SET", Key: "saldo", Value: "100"})
+	}()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		node.mu.Lock()
+		appended := len(node.log) == 1
+		node.mu.Unlock()
+		if appended {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("la propuesta no fue agregada al log a tiempo")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("la propuesta terminó antes de alcanzar mayoría: %v", err)
+	default:
+	}
+
+	node.mu.Lock()
+	node.matchIndex[peer1] = 1
+	node.advanceCommitIndex()
+	node.mu.Unlock()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("la propuesta devolvió un error después del commit: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("la propuesta no terminó después de alcanzar mayoría")
 	}
 }
