@@ -74,6 +74,45 @@ func TestNewNodeLimitsRecoveredCommitIndexToLog(t *testing.T) {
 	}
 }
 
+func TestNewNodeRebuildsStateMachineFromCommittedLog(t *testing.T) {
+	dir := t.TempDir()
+	wal, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	entries := []LogEntry{
+		{Term: 1, Index: 1, Command: Command{Op: "SET", Key: "a", Value: "1"}},
+		{Term: 2, Index: 2, Command: Command{Op: "SET", Key: "b", Value: "2"}},
+		{Term: 2, Index: 3, Command: Command{Op: "SET", Key: "c", Value: "3"}},
+	}
+	if err := wal.AppendEntries(entries); err != nil {
+		t.Fatalf("no se pudo preparar el log: %v", err)
+	}
+	if err := wal.SaveState(PersistentState{CurrentTerm: 2, CommitIndex: 2}); err != nil {
+		t.Fatalf("no se pudo guardar el estado: %v", err)
+	}
+
+	var applied []Command
+	restarted := NewNode("node-1", nil, wal, NewTransport(), func(cmd Command) {
+		applied = append(applied, cmd)
+	})
+
+	if len(applied) != 2 {
+		t.Fatalf("cantidad inesperada de comandos recuperados: se obtuvo %d, se esperaba 2", len(applied))
+	}
+	for i := range applied {
+		if applied[i] != entries[i].Command {
+			t.Fatalf("comando recuperado %d inesperado: se obtuvo %+v, se esperaba %+v", i, applied[i], entries[i].Command)
+		}
+	}
+
+	restarted.mu.Lock()
+	defer restarted.mu.Unlock()
+	if restarted.lastApplied != 2 {
+		t.Fatalf("último índice aplicado inesperado: se obtuvo %d, se esperaba 2", restarted.lastApplied)
+	}
+}
+
 func TestProposalRespectsCanceledContext(t *testing.T) {
 	node := newTestNode(t, nil)
 	node.mu.Lock()

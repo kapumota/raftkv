@@ -64,6 +64,9 @@ func NewNode(id string, peers []string, wal *WAL, transport *Transport, apply Ap
 		apply:          apply,
 		stopCh:         make(chan struct{}),
 	}
+	// Reconstruye la máquina de estados solo con las entradas confirmadas antes
+	// del reinicio. Las entradas posteriores a commitIndex permanecen sin aplicar.
+	n.applyCommitted()
 	n.resetElectionTimer()
 	return n
 }
