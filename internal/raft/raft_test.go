@@ -173,6 +173,60 @@ func TestFollowerCannotConfirmLeadership(t *testing.T) {
 	}
 }
 
+func TestReadIndexIncludesPreviousCommittedWrite(t *testing.T) {
+	node := newTestNode(t, nil)
+	t.Cleanup(func() { stopNodeLoop(node) })
+	node.mu.Lock()
+	node.currentTerm = 1
+	node.becomeLeader()
+	node.mu.Unlock()
+
+	cmd := Command{Op: "SET", Key: "saldo", Value: "100"}
+	if err := node.Propose(context.Background(), cmd); err != nil {
+		t.Fatalf("no se pudo confirmar la escritura previa: %v", err)
+	}
+
+	readIndex, err := node.ReadIndex(context.Background())
+	if err != nil {
+		t.Fatalf("no se pudo obtener el índice de lectura: %v", err)
+	}
+	if readIndex != 2 {
+		t.Fatalf("índice de lectura inesperado: se obtuvo %d, se esperaba 2", readIndex)
+	}
+}
+
+func TestFollowerCannotGetReadIndex(t *testing.T) {
+	node := newTestNode(t, nil)
+
+	readIndex, err := node.ReadIndex(context.Background())
+	if !errors.Is(err, ErrNotLeader) {
+		t.Fatalf("error inesperado: se obtuvo %v, se esperaba ErrNotLeader", err)
+	}
+	if readIndex != 0 {
+		t.Fatalf("un follower devolvió un índice de lectura: se obtuvo %d, se esperaba 0", readIndex)
+	}
+}
+
+func TestReadIndexRespectsCanceledContext(t *testing.T) {
+	node := newTestNode(t, nil)
+	node.mu.Lock()
+	node.currentTerm = 1
+	node.becomeLeader()
+	node.mu.Unlock()
+	t.Cleanup(func() { stopNodeLoop(node) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	readIndex, err := node.ReadIndex(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error inesperado: se obtuvo %v, se esperaba context.Canceled", err)
+	}
+	if readIndex != 0 {
+		t.Fatalf("se devolvió un índice con el contexto cancelado: se obtuvo %d, se esperaba 0", readIndex)
+	}
+}
+
 func TestNewNodeRestoresCommitIndex(t *testing.T) {
 	dir := t.TempDir()
 	wal, err := NewWAL(dir)

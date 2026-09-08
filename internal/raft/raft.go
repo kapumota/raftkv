@@ -356,6 +356,21 @@ func (n *Node) ConfirmLeadership(ctx context.Context) error {
 	}
 }
 
+// ReadIndex devuelve el mayor índice aplicado que puede usarse como punto de
+// lectura linealizable después de confirmar el liderazgo mediante mayoría.
+func (n *Node) ReadIndex(ctx context.Context) (int, error) {
+	if err := n.ConfirmLeadership(ctx); err != nil {
+		return 0, err
+	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.state != Leader || n.leaderBarrierIndex == 0 || n.commitIndex < n.leaderBarrierIndex {
+		return 0, ErrNotLeader
+	}
+	return n.lastApplied, nil
+}
+
 func (n *Node) confirmLeadershipRound(ctx context.Context, term, barrierIndex int, peers []string) (bool, error) {
 	roundCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
