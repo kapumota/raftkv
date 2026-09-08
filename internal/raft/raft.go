@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"context"
 	"errors"
 	"math/rand"
 	"sync"
@@ -30,8 +31,9 @@ type Node struct {
 	commitIndex int
 	lastApplied int
 
-	nextIndex  map[string]int
-	matchIndex map[string]int
+	nextIndex      map[string]int
+	matchIndex     map[string]int
+	pendingCommits map[int]chan error
 
 	wal       *WAL
 	transport *Transport
@@ -47,18 +49,19 @@ func NewNode(id string, peers []string, wal *WAL, transport *Transport, apply Ap
 	st, _ := wal.LoadState()
 	log, _ := wal.LoadLog()
 	n := &Node{
-		id:          id,
-		peers:       peers,
-		state:       Follower,
-		currentTerm: st.CurrentTerm,
-		votedFor:    st.VotedFor,
-		log:         log,
-		nextIndex:   map[string]int{},
-		matchIndex:  map[string]int{},
-		wal:         wal,
-		transport:   transport,
-		apply:       apply,
-		stopCh:      make(chan struct{}),
+		id:             id,
+		peers:          peers,
+		state:          Follower,
+		currentTerm:    st.CurrentTerm,
+		votedFor:       st.VotedFor,
+		log:            log,
+		nextIndex:      map[string]int{},
+		matchIndex:     map[string]int{},
+		pendingCommits: map[int]chan error{},
+		wal:            wal,
+		transport:      transport,
+		apply:          apply,
+		stopCh:         make(chan struct{}),
 	}
 	n.resetElectionTimer()
 	return n
@@ -160,11 +163,15 @@ func (n *Node) startElection() {
 
 // becomeFollower asume que el llamador ya mantiene bloqueado n.mu.
 func (n *Node) becomeFollower(term int) {
+	wasLeader := n.state == Leader
 	n.state = Follower
 	n.currentTerm = term
 	n.votedFor = ""
 	_ = n.wal.SaveState(PersistentState{CurrentTerm: n.currentTerm, VotedFor: n.votedFor})
 	n.resetElectionTimer()
+	if wasLeader {
+		n.failPendingCommits(ErrNotLeader)
+	}
 }
 
 // becomeLeader asume que el llamador ya mantiene bloqueado n.mu.
@@ -265,8 +272,31 @@ func (n *Node) advanceCommitIndex() {
 		if count > (len(n.peers)+1)/2 {
 			n.commitIndex = idx
 			n.applyCommitted()
+			n.notifyCommitted()
 			break
 		}
+	}
+}
+
+// notifyCommitted asume que el llamador ya mantiene bloqueado n.mu.
+// Despierta las propuestas cuyo índice ya fue confirmado por mayoría.
+func (n *Node) notifyCommitted() {
+	for idx, done := range n.pendingCommits {
+		if idx <= n.commitIndex {
+			done <- nil
+			close(done)
+			delete(n.pendingCommits, idx)
+		}
+	}
+}
+
+// failPendingCommits asume que el llamador ya mantiene bloqueado n.mu.
+// Finaliza las propuestas pendientes cuando el nodo pierde el liderazgo.
+func (n *Node) failPendingCommits(err error) {
+	for idx, done := range n.pendingCommits {
+		done <- err
+		close(done)
+		delete(n.pendingCommits, idx)
 	}
 }
 
@@ -354,22 +384,47 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs) AppendEntriesReply {
 	return reply
 }
 
-// Propose agrega un comando al log si este nodo es el líder actual.
-// Devuelve ErrNotLeader (con el propio id como pista, ya que este nodo no
-// sabe con certeza quién es el líder) si no lo es.
-func (n *Node) Propose(cmd Command) error {
+// Propose agrega un comando al log si este nodo es el líder actual y espera
+// hasta que la entrada sea confirmada por una mayoría o el contexto termine.
+// Devuelve ErrNotLeader si el nodo no es el líder actual.
+func (n *Node) Propose(ctx context.Context, cmd Command) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	n.mu.Lock()
 	if n.state != Leader {
 		n.mu.Unlock()
 		return ErrNotLeader
 	}
+
 	entry := LogEntry{Term: n.currentTerm, Index: len(n.log) + 1, Command: cmd}
+	done := make(chan error, 1)
 	n.log = append(n.log, entry)
+	n.pendingCommits[entry.Index] = done
 	_ = n.wal.AppendEntries([]LogEntry{entry})
+
+	// Permite que un clúster de un solo nodo confirme inmediatamente.
+	n.advanceCommitIndex()
 	n.mu.Unlock()
 
 	n.broadcastAppendEntries()
-	return nil
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		n.mu.Lock()
+		committed := entry.Index <= n.commitIndex
+		if current, ok := n.pendingCommits[entry.Index]; ok && current == done {
+			delete(n.pendingCommits, entry.Index)
+		}
+		n.mu.Unlock()
+		if committed {
+			return nil
+		}
+		return ctx.Err()
+	}
 }
 
 func (n *Node) Status() (id string, state string, term int, votedFor string, commitIndex int) {
