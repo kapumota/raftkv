@@ -33,7 +33,7 @@ type Node struct {
 
 	nextIndex      map[string]int
 	matchIndex     map[string]int
-	pendingCommits map[int]chan struct{}
+	pendingCommits map[int]chan error
 
 	wal       *WAL
 	transport *Transport
@@ -57,7 +57,7 @@ func NewNode(id string, peers []string, wal *WAL, transport *Transport, apply Ap
 		log:            log,
 		nextIndex:      map[string]int{},
 		matchIndex:     map[string]int{},
-		pendingCommits: map[int]chan struct{}{},
+		pendingCommits: map[int]chan error{},
 		wal:            wal,
 		transport:      transport,
 		apply:          apply,
@@ -163,11 +163,15 @@ func (n *Node) startElection() {
 
 // becomeFollower asume que el llamador ya mantiene bloqueado n.mu.
 func (n *Node) becomeFollower(term int) {
+	wasLeader := n.state == Leader
 	n.state = Follower
 	n.currentTerm = term
 	n.votedFor = ""
 	_ = n.wal.SaveState(PersistentState{CurrentTerm: n.currentTerm, VotedFor: n.votedFor})
 	n.resetElectionTimer()
+	if wasLeader {
+		n.failPendingCommits(ErrNotLeader)
+	}
 }
 
 // becomeLeader asume que el llamador ya mantiene bloqueado n.mu.
@@ -279,9 +283,20 @@ func (n *Node) advanceCommitIndex() {
 func (n *Node) notifyCommitted() {
 	for idx, done := range n.pendingCommits {
 		if idx <= n.commitIndex {
+			done <- nil
 			close(done)
 			delete(n.pendingCommits, idx)
 		}
+	}
+}
+
+// failPendingCommits asume que el llamador ya mantiene bloqueado n.mu.
+// Finaliza las propuestas pendientes cuando el nodo pierde el liderazgo.
+func (n *Node) failPendingCommits(err error) {
+	for idx, done := range n.pendingCommits {
+		done <- err
+		close(done)
+		delete(n.pendingCommits, idx)
 	}
 }
 
@@ -384,7 +399,7 @@ func (n *Node) Propose(ctx context.Context, cmd Command) error {
 	}
 
 	entry := LogEntry{Term: n.currentTerm, Index: len(n.log) + 1, Command: cmd}
-	done := make(chan struct{})
+	done := make(chan error, 1)
 	n.log = append(n.log, entry)
 	n.pendingCommits[entry.Index] = done
 	_ = n.wal.AppendEntries([]LogEntry{entry})
@@ -396,8 +411,8 @@ func (n *Node) Propose(ctx context.Context, cmd Command) error {
 	n.broadcastAppendEntries()
 
 	select {
-	case <-done:
-		return nil
+	case err := <-done:
+		return err
 	case <-ctx.Done():
 		n.mu.Lock()
 		committed := entry.Index <= n.commitIndex

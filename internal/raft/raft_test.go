@@ -178,3 +178,66 @@ func TestProposalWaitsForMajorityCommit(t *testing.T) {
 		t.Fatal("la propuesta no terminó después de alcanzar mayoría")
 	}
 }
+
+func TestPendingProposalFailsWhenLeaderStepsDown(t *testing.T) {
+	node := newTestNode(t, nil)
+	peer1 := "http://127.0.0.1:1"
+	peer2 := "http://127.0.0.1:2"
+
+	node.mu.Lock()
+	node.peers = []string{peer1, peer2}
+	node.state = Leader
+	node.currentTerm = 1
+	node.nextIndex[peer1] = 1
+	node.nextIndex[peer2] = 1
+	node.matchIndex[peer1] = 0
+	node.matchIndex[peer2] = 0
+	node.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- node.Propose(ctx, Command{Op: "SET", Key: "saldo", Value: "100"})
+	}()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		node.mu.Lock()
+		pending := len(node.pendingCommits) == 1
+		node.mu.Unlock()
+		if pending {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("la propuesta no quedó pendiente a tiempo")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	reply := node.HandleAppendEntries(AppendEntriesArgs{
+		Term:         2,
+		LeaderID:     "node-2",
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+	})
+	if !reply.Success {
+		t.Fatal("se esperaba que el nuevo líder fuera aceptado")
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrNotLeader) {
+			t.Fatalf("error inesperado: se obtuvo %v, se esperaba ErrNotLeader", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("la propuesta no terminó después de perder el liderazgo")
+	}
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if len(node.pendingCommits) != 0 {
+		t.Fatalf("quedaron propuestas pendientes: se obtuvo %d, se esperaba 0", len(node.pendingCommits))
+	}
+}
