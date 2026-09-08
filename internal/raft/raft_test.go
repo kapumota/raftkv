@@ -25,6 +25,55 @@ func TestFollowerRejectsProposal(t *testing.T) {
 	}
 }
 
+func TestNewNodeRestoresCommitIndex(t *testing.T) {
+	dir := t.TempDir()
+	wal, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	entries := []LogEntry{
+		{Term: 1, Index: 1, Command: Command{Op: "SET", Key: "a", Value: "1"}},
+		{Term: 2, Index: 2, Command: Command{Op: "SET", Key: "b", Value: "2"}},
+	}
+	if err := wal.AppendEntries(entries); err != nil {
+		t.Fatalf("no se pudo preparar el log: %v", err)
+	}
+	if err := wal.SaveState(PersistentState{CurrentTerm: 2, VotedFor: "node-2", CommitIndex: 1}); err != nil {
+		t.Fatalf("no se pudo guardar el estado: %v", err)
+	}
+
+	restarted := NewNode("node-1", nil, wal, NewTransport(), nil)
+
+	restarted.mu.Lock()
+	defer restarted.mu.Unlock()
+	if restarted.commitIndex != 1 {
+		t.Fatalf("índice de commit inesperado después del reinicio: se obtuvo %d, se esperaba 1", restarted.commitIndex)
+	}
+}
+
+func TestNewNodeLimitsRecoveredCommitIndexToLog(t *testing.T) {
+	dir := t.TempDir()
+	wal, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	entry := LogEntry{Term: 1, Index: 1, Command: Command{Op: "SET", Key: "a", Value: "1"}}
+	if err := wal.AppendEntries([]LogEntry{entry}); err != nil {
+		t.Fatalf("no se pudo preparar el log: %v", err)
+	}
+	if err := wal.SaveState(PersistentState{CurrentTerm: 1, CommitIndex: 4}); err != nil {
+		t.Fatalf("no se pudo guardar el estado: %v", err)
+	}
+
+	restarted := NewNode("node-1", nil, wal, NewTransport(), nil)
+
+	restarted.mu.Lock()
+	defer restarted.mu.Unlock()
+	if restarted.commitIndex != 1 {
+		t.Fatalf("índice de commit recuperado fuera del log: se obtuvo %d, se esperaba 1", restarted.commitIndex)
+	}
+}
+
 func TestProposalRespectsCanceledContext(t *testing.T) {
 	node := newTestNode(t, nil)
 	node.mu.Lock()
@@ -118,6 +167,14 @@ func TestSingleNodeProposalCommitsImmediately(t *testing.T) {
 	}
 	if len(applied) != 1 || applied[0] != cmd {
 		t.Fatalf("comando aplicado inesperado: se obtuvo %+v", applied)
+	}
+
+	state, err := node.wal.LoadState()
+	if err != nil {
+		t.Fatalf("no se pudo cargar el estado persistente: %v", err)
+	}
+	if state.CommitIndex != 1 {
+		t.Fatalf("índice de commit persistente inesperado: se obtuvo %d, se esperaba 1", state.CommitIndex)
 	}
 }
 

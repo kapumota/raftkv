@@ -8,7 +8,7 @@ func TestWALSaveAndLoadState(t *testing.T) {
 		t.Fatalf("no se pudo crear el WAL: %v", err)
 	}
 
-	expected := PersistentState{CurrentTerm: 7, VotedFor: "node-2"}
+	expected := PersistentState{CurrentTerm: 7, VotedFor: "node-2", CommitIndex: 3}
 	if err := wal.SaveState(expected); err != nil {
 		t.Fatalf("no se pudo guardar el estado: %v", err)
 	}
