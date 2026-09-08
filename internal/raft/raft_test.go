@@ -25,6 +25,68 @@ func TestFollowerRejectsProposal(t *testing.T) {
 	}
 }
 
+func TestBecomeLeaderAppendsCurrentTermBarrier(t *testing.T) {
+	dir := t.TempDir()
+	wal, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	previous := LogEntry{
+		Term:    1,
+		Index:   1,
+		Command: Command{Op: "SET", Key: "saldo", Value: "100"},
+	}
+	if err := wal.AppendEntries([]LogEntry{previous}); err != nil {
+		t.Fatalf("no se pudo preparar el log: %v", err)
+	}
+
+	var applied []Command
+	node := NewNode("node-1", nil, wal, NewTransport(), func(cmd Command) {
+		applied = append(applied, cmd)
+	})
+	t.Cleanup(func() { stopNodeLoop(node) })
+
+	node.mu.Lock()
+	node.currentTerm = 2
+	node.becomeLeader()
+	node.mu.Unlock()
+
+	node.mu.Lock()
+	if len(node.log) != 2 {
+		node.mu.Unlock()
+		t.Fatalf("longitud inesperada del log: se obtuvo %d, se esperaba 2", len(node.log))
+	}
+	barrier := node.log[1]
+	barrierIndex := node.leaderBarrierIndex
+	commitIndex := node.commitIndex
+	lastApplied := node.lastApplied
+	node.mu.Unlock()
+
+	if barrier.Term != 2 {
+		t.Fatalf("término inesperado de la barrera: se obtuvo %d, se esperaba 2", barrier.Term)
+	}
+	if barrier.Index != 2 || barrierIndex != 2 {
+		t.Fatalf("índice inesperado de la barrera: entrada=%d, nodo=%d, se esperaba 2", barrier.Index, barrierIndex)
+	}
+	if barrier.Command.Op != noOpOperation {
+		t.Fatalf("operación inesperada de la barrera: se obtuvo %q, se esperaba %q", barrier.Command.Op, noOpOperation)
+	}
+	if commitIndex != 2 || lastApplied != 2 {
+		t.Fatalf("progreso inesperado después de confirmar la barrera: commitIndex=%d, lastApplied=%d", commitIndex, lastApplied)
+	}
+	if len(applied) != 1 || applied[0] != previous.Command {
+		t.Fatalf("comandos aplicados inesperados: se obtuvo %+v", applied)
+	}
+
+	persistedLog, err := wal.LoadLog()
+	if err != nil {
+		t.Fatalf("no se pudo cargar el log persistente: %v", err)
+	}
+	if len(persistedLog) != 2 || persistedLog[1] != barrier {
+		t.Fatalf("la barrera no quedó persistida correctamente: se obtuvo %+v", persistedLog)
+	}
+}
+
 func TestNewNodeRestoresCommitIndex(t *testing.T) {
 	dir := t.TempDir()
 	wal, err := NewWAL(dir)

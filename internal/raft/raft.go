@@ -14,6 +14,8 @@ type ApplyFunc func(cmd Command)
 
 var ErrNotLeader = errors.New("el nodo no es líder")
 
+const noOpOperation = "NOOP"
+
 // Node implementa el algoritmo Raft descrito en el artículo original
 // (Ongaro & Ousterhout, 2014), sin instantáneas ni cambios dinámicos de
 // membresía. Está pensado para estudiar el algoritmo, no para producción.
@@ -31,9 +33,10 @@ type Node struct {
 	commitIndex int
 	lastApplied int
 
-	nextIndex      map[string]int
-	matchIndex     map[string]int
-	pendingCommits map[int]chan error
+	nextIndex          map[string]int
+	matchIndex         map[string]int
+	pendingCommits     map[int]chan error
+	leaderBarrierIndex int
 
 	wal       *WAL
 	transport *Transport
@@ -188,6 +191,7 @@ func (n *Node) startElection() {
 func (n *Node) becomeFollower(term int) {
 	wasLeader := n.state == Leader
 	n.state = Follower
+	n.leaderBarrierIndex = 0
 	n.currentTerm = term
 	n.votedFor = ""
 	_ = n.saveState()
@@ -204,6 +208,25 @@ func (n *Node) becomeLeader() {
 		n.nextIndex[p] = len(n.log) + 1
 		n.matchIndex[p] = 0
 	}
+
+	barrier := LogEntry{
+		Term:  n.currentTerm,
+		Index: len(n.log) + 1,
+		Command: Command{
+			Op: noOpOperation,
+		},
+	}
+	if err := n.wal.AppendEntries([]LogEntry{barrier}); err != nil {
+		n.state = Follower
+		n.leaderBarrierIndex = 0
+		n.resetElectionTimer()
+		return
+	}
+	n.log = append(n.log, barrier)
+	n.leaderBarrierIndex = barrier.Index
+
+	// Permite confirmar inmediatamente la barrera en un clúster de un nodo.
+	n.advanceCommitIndex()
 	go n.leaderLoop()
 }
 
@@ -334,7 +357,7 @@ func (n *Node) applyCommitted() {
 	for n.lastApplied < n.commitIndex {
 		n.lastApplied++
 		entry := n.log[n.lastApplied-1]
-		if n.apply != nil {
+		if n.apply != nil && entry.Command.Op != noOpOperation {
 			n.apply(entry.Command)
 		}
 	}

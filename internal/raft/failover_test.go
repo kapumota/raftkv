@@ -162,9 +162,9 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	}
 
 	leader.mu.Lock()
-	if leader.commitIndex != 1 {
+	if leader.commitIndex != 2 {
 		leader.mu.Unlock()
-		t.Fatalf("índice de commit inesperado antes de la caída: se obtuvo %d, se esperaba 1", leader.commitIndex)
+		t.Fatalf("índice de commit inesperado antes de la caída: se obtuvo %d, se esperaba 2", leader.commitIndex)
 	}
 	leader.mu.Unlock()
 
@@ -172,7 +172,7 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	var candidateMachine *testStateMachine
 	for i := 1; i < nodeCount; i++ {
 		nodes[i].mu.Lock()
-		hasEntry := len(nodes[i].log) >= 1 && nodes[i].log[0].Command == original
+		hasEntry := len(nodes[i].log) >= 2 && nodes[i].log[1].Command == original
 		nodes[i].mu.Unlock()
 		if hasEntry {
 			candidate = nodes[i]
@@ -191,7 +191,7 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	candidate.mu.Lock()
 	isLeader := candidate.state == Leader
 	term := candidate.currentTerm
-	entryPreserved := len(candidate.log) >= 1 && candidate.log[0].Command == original
+	entryPreserved := len(candidate.log) >= 2 && candidate.log[1].Command == original
 	candidate.mu.Unlock()
 
 	if !isLeader {
@@ -204,8 +204,8 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 		t.Fatal("la escritura confirmada desapareció después de la caída del líder")
 	}
 
-	// Una entrada del término nuevo permite confirmar también las entradas
-	// comprometidas que fueron creadas en términos anteriores.
+	// La barrera del nuevo líder permite confirmar también las entradas creadas
+	// en términos anteriores; la escritura posterior verifica que puede avanzar.
 	followUp := Command{Op: "SET", Key: "marcador", Value: "1"}
 	followUpCtx, followUpCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer followUpCancel()
