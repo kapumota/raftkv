@@ -16,6 +16,8 @@ var ErrNotLeader = errors.New("el nodo no es líder")
 
 const noOpOperation = "NOOP"
 
+const leadershipRetryInterval = 25 * time.Millisecond
+
 // Node implementa el algoritmo Raft descrito en el artículo original
 // (Ongaro & Ousterhout, 2014), sin instantáneas ni cambios dinámicos de
 // membresía. Está pensado para estudiar el algoritmo, no para producción.
@@ -300,6 +302,160 @@ func (n *Node) broadcastAppendEntries() {
 				n.nextIndex[peer]--
 			}
 		}(p)
+	}
+}
+
+type leadershipConfirmation struct {
+	confirmed bool
+	err       error
+}
+
+// ConfirmLeadership verifica el liderazgo mediante una ronda de AppendEntries
+// iniciada después de la llamada. La barrera del término actual debe estar
+// confirmada y una mayoría debe responder dentro del mismo término.
+func (n *Node) ConfirmLeadership(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	for {
+		n.mu.Lock()
+		if n.state != Leader || n.leaderBarrierIndex == 0 {
+			n.mu.Unlock()
+			return ErrNotLeader
+		}
+		term := n.currentTerm
+		barrierIndex := n.leaderBarrierIndex
+		peers := append([]string{}, n.peers...)
+		committed := n.commitIndex >= barrierIndex
+		n.mu.Unlock()
+
+		if len(peers) == 0 {
+			if committed {
+				return nil
+			}
+		} else {
+			confirmed, err := n.confirmLeadershipRound(ctx, term, barrierIndex, peers)
+			if err != nil {
+				return err
+			}
+			if confirmed {
+				return nil
+			}
+		}
+
+		timer := time.NewTimer(leadershipRetryInterval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (n *Node) confirmLeadershipRound(ctx context.Context, term, barrierIndex int, peers []string) (bool, error) {
+	roundCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan leadershipConfirmation, len(peers))
+	for _, peer := range peers {
+		go func(peer string) {
+			confirmed, err := n.confirmPeer(roundCtx, peer, term, barrierIndex)
+			results <- leadershipConfirmation{confirmed: confirmed, err: err}
+		}(peer)
+	}
+
+	majority := (len(peers)+1)/2 + 1
+	confirmations := 1
+	for range peers {
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case result := <-results:
+			if result.err != nil {
+				return false, result.err
+			}
+			if result.confirmed {
+				confirmations++
+			}
+			if confirmations >= majority {
+				n.mu.Lock()
+				valid := n.state == Leader && n.currentTerm == term && n.commitIndex >= barrierIndex
+				n.mu.Unlock()
+				if !valid {
+					return false, ErrNotLeader
+				}
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (n *Node) confirmPeer(ctx context.Context, peer string, term, barrierIndex int) (bool, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+
+		n.mu.Lock()
+		if n.state != Leader || n.currentTerm != term || n.leaderBarrierIndex != barrierIndex {
+			n.mu.Unlock()
+			return false, ErrNotLeader
+		}
+		nextIndex := n.nextIndex[peer]
+		if nextIndex < 1 {
+			nextIndex = 1
+		}
+		prevLogIndex := nextIndex - 1
+		prevLogTerm := 0
+		if prevLogIndex > 0 && prevLogIndex <= len(n.log) {
+			prevLogTerm = n.log[prevLogIndex-1].Term
+		}
+		entries := append([]LogEntry{}, n.log[nextIndex-1:]...)
+		leaderCommit := n.commitIndex
+		n.mu.Unlock()
+
+		reply, err := n.transport.SendAppendEntriesContext(ctx, peer, AppendEntriesArgs{
+			Term:         term,
+			LeaderID:     n.id,
+			PrevLogIndex: prevLogIndex,
+			PrevLogTerm:  prevLogTerm,
+			Entries:      entries,
+			LeaderCommit: leaderCommit,
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				return false, ctx.Err()
+			}
+			return false, nil
+		}
+
+		n.mu.Lock()
+		if reply.Term > n.currentTerm {
+			n.becomeFollower(reply.Term)
+			n.mu.Unlock()
+			return false, ErrNotLeader
+		}
+		if n.state != Leader || n.currentTerm != term {
+			n.mu.Unlock()
+			return false, ErrNotLeader
+		}
+		if reply.Success {
+			n.matchIndex[peer] = prevLogIndex + len(entries)
+			n.nextIndex[peer] = n.matchIndex[peer] + 1
+			n.advanceCommitIndex()
+			confirmed := n.matchIndex[peer] >= barrierIndex && n.commitIndex >= barrierIndex
+			n.mu.Unlock()
+			return confirmed, nil
+		}
+		if n.nextIndex[peer] > 1 {
+			n.nextIndex[peer]--
+		}
+		n.mu.Unlock()
 	}
 }
 

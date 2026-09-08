@@ -3,9 +3,20 @@ package raft
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func newTestRPCServer(t *testing.T, node *Node) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	RegisterRPCHandlers(mux, node)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
 
 func newTestNode(t *testing.T, apply ApplyFunc) *Node {
 	t.Helper()
@@ -84,6 +95,81 @@ func TestBecomeLeaderAppendsCurrentTermBarrier(t *testing.T) {
 	}
 	if len(persistedLog) != 2 || persistedLog[1] != barrier {
 		t.Fatalf("la barrera no quedó persistida correctamente: se obtuvo %+v", persistedLog)
+	}
+}
+
+func TestConfirmLeadershipWithMajority(t *testing.T) {
+	follower1 := newTestNode(t, nil)
+	follower2 := newTestNode(t, nil)
+	t.Cleanup(func() {
+		stopNodeLoop(follower1)
+		stopNodeLoop(follower2)
+	})
+	server1 := newTestRPCServer(t, follower1)
+	server2 := newTestRPCServer(t, follower2)
+
+	wal, err := NewWAL(t.TempDir())
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL del líder: %v", err)
+	}
+	leader := NewNode(
+		"node-1",
+		[]string{server1.URL, server2.URL},
+		wal,
+		NewTransport(),
+		nil,
+	)
+	t.Cleanup(func() { stopNodeLoop(leader) })
+	leader.mu.Lock()
+	leader.currentTerm = 1
+	leader.becomeLeader()
+	leader.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := leader.ConfirmLeadership(ctx); err != nil {
+		t.Fatalf("no se pudo confirmar el liderazgo con mayoría: %v", err)
+	}
+
+	leader.mu.Lock()
+	defer leader.mu.Unlock()
+	if leader.commitIndex < leader.leaderBarrierIndex {
+		t.Fatalf("la barrera no quedó confirmada: commitIndex=%d, leaderBarrierIndex=%d", leader.commitIndex, leader.leaderBarrierIndex)
+	}
+}
+
+func TestConfirmLeadershipRequiresMajority(t *testing.T) {
+	wal, err := NewWAL(t.TempDir())
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	leader := NewNode(
+		"node-1",
+		[]string{"http://127.0.0.1:1", "http://127.0.0.1:2"},
+		wal,
+		NewTransport(),
+		nil,
+	)
+	t.Cleanup(func() { stopNodeLoop(leader) })
+	leader.mu.Lock()
+	leader.currentTerm = 1
+	leader.becomeLeader()
+	leader.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	err = leader.ConfirmLeadership(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error inesperado sin mayoría: se obtuvo %v, se esperaba context.DeadlineExceeded", err)
+	}
+}
+
+func TestFollowerCannotConfirmLeadership(t *testing.T) {
+	node := newTestNode(t, nil)
+
+	err := node.ConfirmLeadership(context.Background())
+	if !errors.Is(err, ErrNotLeader) {
+		t.Fatalf("error inesperado: se obtuvo %v, se esperaba ErrNotLeader", err)
 	}
 }
 
