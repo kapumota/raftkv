@@ -1,0 +1,89 @@
+
+networks:
+  raftnet:
+    driver: bridge
+
+volumes:
+  wal-node1:
+  wal-node2:
+  wal-node3:
+  wal-node4:
+  wal-node5:
+
+x-raft-common: &raft-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.raftnode
+  networks:
+    - raftnet
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+    interval: 5s
+    timeout: 2s
+    retries: 3
+
+services:
+  raft-node-1:
+    <<: *raft-common
+    container_name: raft-node-1
+    environment:
+      NODE_ID: raft-node-1
+      PEERS: "http://raft-node-2:8080,http://raft-node-3:8080,http://raft-node-4:8080,http://raft-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node1:/data
+
+  raft-node-2:
+    <<: *raft-common
+    container_name: raft-node-2
+    environment:
+      NODE_ID: raft-node-2
+      PEERS: "http://raft-node-1:8080,http://raft-node-3:8080,http://raft-node-4:8080,http://raft-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node2:/data
+
+  raft-node-3:
+    <<: *raft-common
+    container_name: raft-node-3
+    environment:
+      NODE_ID: raft-node-3
+      PEERS: "http://raft-node-1:8080,http://raft-node-2:8080,http://raft-node-4:8080,http://raft-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node3:/data
+
+  raft-node-4:
+    <<: *raft-common
+    container_name: raft-node-4
+    environment:
+      NODE_ID: raft-node-4
+      PEERS: "http://raft-node-1:8080,http://raft-node-2:8080,http://raft-node-3:8080,http://raft-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node4:/data
+
+  raft-node-5:
+    <<: *raft-common
+    container_name: raft-node-5
+    environment:
+      NODE_ID: raft-node-5
+      PEERS: "http://raft-node-1:8080,http://raft-node-2:8080,http://raft-node-3:8080,http://raft-node-4:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node5:/data
+
+  client-driver:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    networks:
+      - raftnet
+    environment:
+      NODES: "http://raft-node-1:8080,http://raft-node-2:8080,http://raft-node-3:8080,http://raft-node-4:8080,http://raft-node-5:8080"
+    depends_on:
+      - raft-node-1
+      - raft-node-2
+      - raft-node-3
+      - raft-node-4
+      - raft-node-5

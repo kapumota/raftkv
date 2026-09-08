@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache: true
+
+      - name: Verificar formato
+        run: test -z "$(gofmt -l ./cmd ./internal)"
+
+      - name: Ejecutar go vet
+        run: go vet ./...
+
+      - name: Ejecutar pruebas con detector de carreras
+        run: go test -race ./...
+
+      - name: Compilar
+        run: go build ./...

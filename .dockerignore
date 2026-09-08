@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+.idea
+bin
+build
+dist
+data
+*.out
+*.test
+coverage.out

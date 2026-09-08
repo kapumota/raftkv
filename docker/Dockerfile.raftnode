@@ -1,0 +1,13 @@
+FROM golang:1.22-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+RUN go build -o /out/raftnode ./cmd/raftnode
+
+FROM alpine:3.20
+RUN apk add --no-cache curl
+COPY --from=build /out/raftnode /usr/local/bin/raftnode
+VOLUME ["/data"]
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/raftnode"]
