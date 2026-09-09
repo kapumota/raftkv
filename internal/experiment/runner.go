@@ -45,7 +45,10 @@ func RunExperiment(config ExperimentConfig) (ExperimentResult, error) {
 }
 
 func RunExperimentContext(ctx context.Context, config ExperimentConfig) (ExperimentResult, error) {
-	return runExperiment(ctx, config, newDockerBackend())
+	if err := config.Validate(); err != nil {
+		return ExperimentResult{Config: config, Error: err.Error()}, err
+	}
+	return runExperiment(ctx, config, newDockerBackend(config))
 }
 
 func selectLeader(statuses []NodeStatus) (NodeStatus, error) {
@@ -83,7 +86,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 		if err == nil {
 			leader, err = selectLeader(statuses)
 		}
-		allReady := len(statuses) == 5
+		allReady := len(statuses) == config.Nodes
 		for _, status := range statuses {
 			allReady = allReady && status.CommitIndex > 0
 		}
@@ -155,12 +158,15 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 		case <-ctx.Done():
 			return result, ctx.Err()
 		case <-faultTimer.C:
+			if config.Fault.Type == "ninguna" {
+				continue
+			}
 			statuses, err = b.Statuses(ctx)
 			if err != nil {
 				return
 			}
 			leader, err = selectLeader(statuses)
-			if err != nil || len(statuses) != 5 {
+			if err != nil || len(statuses) != config.Nodes {
 				return result, fmt.Errorf("no se pudo resolver el objetivo con todos los nodos disponibles: %v", err)
 			}
 			target = leader.ID
@@ -207,7 +213,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 				hint.Store("")
 			}
 		case <-end.C:
-			if target == "" || dirty {
+			if config.Fault.Type != "ninguna" && (target == "" || dirty) {
 				return result, fmt.Errorf("la falla o su restauración excedieron la ventana prevista")
 			}
 			log.Print("Experimento finalizado.")

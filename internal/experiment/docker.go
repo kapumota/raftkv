@@ -33,16 +33,24 @@ type endpoint struct {
 }
 
 type dockerBackend struct {
+	ids       []string
 	client    *http.Client
 	urls      map[string]string
 	network   string
 	endpoints map[string]endpoint
 }
 
-func newDockerBackend() *dockerBackend {
+func newDockerBackend(config ExperimentConfig) *dockerBackend {
 	d := &dockerBackend{client: &http.Client{Timeout: 7 * time.Second}, urls: map[string]string{}, endpoints: map[string]endpoint{}}
-	for i := 1; i <= 5; i++ {
-		d.urls[fmt.Sprintf("raft-node-%d", i)] = fmt.Sprintf("http://127.0.0.1:%d", 18080+i)
+	prefix, port := "raft-node", 18080
+	if config.Deployment == "benchmark" {
+		prefix = fmt.Sprintf("raft-bench-%d-node", config.Nodes)
+		port = 18080 + config.Nodes*100
+	}
+	for i := 1; i <= config.Nodes; i++ {
+		id := fmt.Sprintf("%s-%d", prefix, i)
+		d.ids = append(d.ids, id)
+		d.urls[id] = fmt.Sprintf("http://127.0.0.1:%d", port+i)
 	}
 	return d
 }
@@ -59,8 +67,7 @@ func dockerCommand(ctx context.Context, args ...string) ([]byte, error) {
 
 func (d *dockerBackend) Statuses(ctx context.Context) ([]NodeStatus, error) {
 	var statuses []NodeStatus
-	for i := 1; i <= 5; i++ {
-		id := fmt.Sprintf("raft-node-%d", i)
+	for _, id := range d.ids {
 		call, cancel := context.WithTimeout(ctx, 400*time.Millisecond)
 		req, _ := http.NewRequestWithContext(call, http.MethodGet, d.urls[id]+"/status", nil)
 		resp, err := d.client.Do(req)
@@ -100,8 +107,7 @@ func inspectContainer(ctx context.Context, id string) (containerInfo, error) {
 
 func (d *dockerBackend) Prepare(ctx context.Context) (map[string]string, error) {
 	metadata := map[string]string{}
-	for i := 1; i <= 5; i++ {
-		id := fmt.Sprintf("raft-node-%d", i)
+	for _, id := range d.ids {
 		info, err := inspectContainer(ctx, id)
 		if err != nil {
 			return nil, err

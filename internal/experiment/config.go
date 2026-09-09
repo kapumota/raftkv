@@ -16,18 +16,20 @@ type FaultConfig struct {
 }
 
 type ExperimentConfig struct {
-	Version  int         `yaml:"version" json:"version"`
-	Name     string      `yaml:"nombre" json:"nombre"`
-	Seed     int64       `yaml:"semilla" json:"semilla"`
-	Duration int         `yaml:"duracion_segundos" json:"duracion_segundos"`
-	Clients  int         `yaml:"clientes" json:"clientes"`
-	Rate     int         `yaml:"operaciones_por_segundo" json:"operaciones_por_segundo"`
-	Fault    FaultConfig `yaml:"falla" json:"falla"`
+	Nodes      int         `yaml:"nodos" json:"nodos"`
+	Deployment string      `yaml:"despliegue" json:"despliegue"`
+	Version    int         `yaml:"version" json:"version"`
+	Name       string      `yaml:"nombre" json:"nombre"`
+	Seed       int64       `yaml:"semilla" json:"semilla"`
+	Duration   int         `yaml:"duracion_segundos" json:"duracion_segundos"`
+	Clients    int         `yaml:"clientes" json:"clientes"`
+	Rate       int         `yaml:"operaciones_por_segundo" json:"operaciones_por_segundo"`
+	Fault      FaultConfig `yaml:"falla" json:"falla"`
 }
 
 // LoadConfig admite un único documento y exige los tipos escalares del contrato.
 func LoadConfig(r io.Reader) (ExperimentConfig, error) {
-	var config ExperimentConfig
+	config := ExperimentConfig{Nodes: 5, Deployment: "local"}
 	data, err := io.ReadAll(io.LimitReader(r, 65537))
 	if err != nil || len(data) > 65536 {
 		return config, fmt.Errorf("no se pudo leer el escenario o supera 64 KiB")
@@ -38,10 +40,11 @@ func LoadConfig(r io.Reader) (ExperimentConfig, error) {
 		return config, fmt.Errorf("no se pudo leer el escenario: %w", err)
 	}
 	fields := map[string]string{"version": "!!int", "nombre": "!!str", "semilla": "!!int", "duracion_segundos": "!!int", "clientes": "!!int", "operaciones_por_segundo": "!!int", "falla": "!!map"}
+	fields["nodos"], fields["despliegue"] = "!!int", "!!str"
 	if len(document.Content) != 1 {
 		return config, fmt.Errorf("se requiere un documento de configuración")
 	}
-	if err := validateMapping(document.Content[0], fields); err != nil {
+	if err := validateMapping(document.Content[0], fields, "nodos", "despliegue"); err != nil {
 		return config, err
 	}
 	for i := 0; i < len(document.Content[0].Content); i += 2 {
@@ -61,7 +64,7 @@ func LoadConfig(r io.Reader) (ExperimentConfig, error) {
 	return config, config.Validate()
 }
 
-func validateMapping(node *yaml.Node, fields map[string]string) error {
+func validateMapping(node *yaml.Node, fields map[string]string, optional ...string) error {
 	if node.Kind != yaml.MappingNode || node.Tag != "!!map" {
 		return fmt.Errorf("se esperaba un mapa YAML")
 	}
@@ -77,19 +80,39 @@ func validateMapping(node *yaml.Node, fields map[string]string) error {
 		}
 		seen[key.Value] = true
 	}
-	if len(seen) != len(fields) {
-		return fmt.Errorf("faltan campos obligatorios")
+	for _, key := range optional {
+		seen[key] = true
+	}
+	for key := range fields {
+		if !seen[key] {
+			return fmt.Errorf("falta el campo obligatorio: %s", key)
+		}
 	}
 	return nil
 }
 
 func (c ExperimentConfig) Validate() error {
+	if c.Nodes != 3 && c.Nodes != 5 {
+		return fmt.Errorf("se admiten tres o cinco nodos")
+	}
+	if c.Deployment != "local" && c.Deployment != "benchmark" {
+		return fmt.Errorf("despliegue desconocido")
+	}
+	if c.Deployment == "local" && c.Nodes != 5 {
+		return fmt.Errorf("el despliegue local existente tiene cinco nodos")
+	}
 	if c.Version != 1 || strings.TrimSpace(c.Name) == "" || c.Seed < 0 {
 		return fmt.Errorf("versión, nombre o semilla inválidos")
 	}
 	// Los límites acotan temporizadores, concurrencia y memoria de resultados.
 	if c.Duration < 3 || c.Duration > 3600 || c.Clients < 1 || c.Clients > 128 || c.Rate < 1 || c.Rate > 1000 || c.Duration*c.Rate > 1000000 {
 		return fmt.Errorf("duración, clientes o tasa fuera de los límites admitidos")
+	}
+	if c.Fault.Type == "ninguna" {
+		if c.Fault.Target != "" || c.Fault.At != 0 || c.Fault.Duration != 0 {
+			return fmt.Errorf("un escenario sin fallas no admite objetivo ni tiempos de falla")
+		}
+		return nil
 	}
 	if c.Fault.Type != "caida" && c.Fault.Type != "particion" {
 		return fmt.Errorf("tipo de falla desconocido")

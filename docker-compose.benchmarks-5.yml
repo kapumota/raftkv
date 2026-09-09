@@ -1,0 +1,80 @@
+name: raftkv-bench-5
+
+networks:
+  raftnet:
+    driver: bridge
+
+volumes:
+  wal-node1:
+  wal-node2:
+  wal-node3:
+  wal-node4:
+  wal-node5:
+
+x-raft-common: &raft-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.raftnode
+  networks:
+    - raftnet
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+    interval: 5s
+    timeout: 2s
+    retries: 3
+
+services:
+  raft-bench-5-node-1:
+    <<: *raft-common
+    container_name: raft-bench-5-node-1
+    ports: ["127.0.0.1:18581:8080"]
+    environment:
+      NODE_ID: raft-bench-5-node-1
+      PEERS: "http://raft-bench-5-node-2:8080,http://raft-bench-5-node-3:8080,http://raft-bench-5-node-4:8080,http://raft-bench-5-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node1:/data
+
+  raft-bench-5-node-2:
+    <<: *raft-common
+    container_name: raft-bench-5-node-2
+    ports: ["127.0.0.1:18582:8080"]
+    environment:
+      NODE_ID: raft-bench-5-node-2
+      PEERS: "http://raft-bench-5-node-1:8080,http://raft-bench-5-node-3:8080,http://raft-bench-5-node-4:8080,http://raft-bench-5-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node2:/data
+
+  raft-bench-5-node-3:
+    <<: *raft-common
+    container_name: raft-bench-5-node-3
+    ports: ["127.0.0.1:18583:8080"]
+    environment:
+      NODE_ID: raft-bench-5-node-3
+      PEERS: "http://raft-bench-5-node-1:8080,http://raft-bench-5-node-2:8080,http://raft-bench-5-node-4:8080,http://raft-bench-5-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node3:/data
+
+  raft-bench-5-node-4:
+    <<: *raft-common
+    container_name: raft-bench-5-node-4
+    ports: ["127.0.0.1:18584:8080"]
+    environment:
+      NODE_ID: raft-bench-5-node-4
+      PEERS: "http://raft-bench-5-node-1:8080,http://raft-bench-5-node-2:8080,http://raft-bench-5-node-3:8080,http://raft-bench-5-node-5:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node4:/data
+
+  raft-bench-5-node-5:
+    <<: *raft-common
+    container_name: raft-bench-5-node-5
+    ports: ["127.0.0.1:18585:8080"]
+    environment:
+      NODE_ID: raft-bench-5-node-5
+      PEERS: "http://raft-bench-5-node-1:8080,http://raft-bench-5-node-2:8080,http://raft-bench-5-node-3:8080,http://raft-bench-5-node-4:8080"
+      DATA_DIR: /data
+    volumes:
+      - wal-node5:/data
