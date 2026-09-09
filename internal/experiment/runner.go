@@ -103,6 +103,18 @@ func resolveFaultTarget(ctx context.Context, config ExperimentConfig, b backend)
 	}
 }
 
+// updateLeaderHint conserva el último líder conocido cuando la observación
+// del plano de control es transitoria o incompleta.
+func updateLeaderHint(hint *atomic.Value, statuses []NodeStatus, statusErr error) {
+	if statusErr != nil {
+		return
+	}
+	candidate, err := selectLeader(statuses)
+	if err == nil {
+		hint.Store(candidate.ID)
+	}
+}
+
 func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (result ExperimentResult, err error) {
 	result.Config = config
 	defer func() {
@@ -226,12 +238,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 			restoreAt = nil
 		case <-refresh.C:
 			current, statusErr := b.Statuses(ctx)
-			candidate, leaderErr := selectLeader(current)
-			if statusErr == nil && leaderErr == nil {
-				hint.Store(candidate.ID)
-			} else {
-				hint.Store("")
-			}
+			updateLeaderHint(&hint, current, statusErr)
 		case <-end.C:
 			if config.Fault.Type != "ninguna" && (target == "" || dirty) {
 				return result, fmt.Errorf("la falla o su restauración excedieron la ventana prevista")
