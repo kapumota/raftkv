@@ -194,7 +194,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 	defer faultTimer.Stop()
 	end := time.NewTimer(time.Duration(config.Duration) * time.Second)
 	defer end.Stop()
-	refresh := time.NewTicker(250 * time.Millisecond)
+	refresh := time.NewTicker(time.Second)
 	defer refresh.Stop()
 	var restoreAt <-chan time.Time
 	var restoreTimer *time.Timer

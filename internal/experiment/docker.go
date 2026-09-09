@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -66,21 +67,64 @@ func dockerCommand(ctx context.Context, args ...string) ([]byte, error) {
 }
 
 func (d *dockerBackend) Statuses(ctx context.Context) ([]NodeStatus, error) {
-	var statuses []NodeStatus
-	for _, id := range d.ids {
-		call, cancel := context.WithTimeout(ctx, 400*time.Millisecond)
-		req, _ := http.NewRequestWithContext(call, http.MethodGet, d.urls[id]+"/status", nil)
-		resp, err := d.client.Do(req)
-		if err == nil {
-			var status NodeStatus
-			err = json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&status)
-			resp.Body.Close()
-			if err == nil && resp.StatusCode == http.StatusOK && status.ID == id {
-				statuses = append(statuses, status)
-			}
-		}
-		cancel()
+	type statusResult struct {
+		status NodeStatus
+		ok     bool
 	}
+
+	results := make(chan statusResult, len(d.ids))
+
+	for _, id := range d.ids {
+		go func(id string) {
+			call, cancel := context.WithTimeout(ctx, 1200*time.Millisecond)
+			defer cancel()
+
+			req, err := http.NewRequestWithContext(
+				call,
+				http.MethodGet,
+				d.urls[id]+"/status",
+				nil,
+			)
+			if err != nil {
+				results <- statusResult{}
+				return
+			}
+
+			resp, err := d.client.Do(req)
+			if err != nil {
+				results <- statusResult{}
+				return
+			}
+			defer resp.Body.Close()
+
+			var status NodeStatus
+			err = json.NewDecoder(
+				io.LimitReader(resp.Body, 65536),
+			).Decode(&status)
+
+			if err != nil ||
+				resp.StatusCode != http.StatusOK ||
+				status.ID != id {
+				results <- statusResult{}
+				return
+			}
+
+			results <- statusResult{status: status, ok: true}
+		}(id)
+	}
+
+	statuses := make([]NodeStatus, 0, len(d.ids))
+	for range d.ids {
+		result := <-results
+		if result.ok {
+			statuses = append(statuses, result.status)
+		}
+	}
+
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i].ID < statuses[j].ID
+	})
+
 	if len(statuses) == 0 {
 		return nil, fmt.Errorf("ningún nodo respondió al estado")
 	}
