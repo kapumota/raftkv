@@ -7,6 +7,10 @@ type Command struct {
 	Op    string `json:"op"`
 	Key   string `json:"key,omitempty"`
 	Value string `json:"value,omitempty"`
+	// ClientID identifica de forma estable al cliente.
+	ClientID string `json:"client_id,omitempty"`
+	// RequestID identifica una operación concreta del cliente.
+	RequestID uint64 `json:"request_id,omitempty"`
 }
 
 // LogEntry es una entrada del log replicado. Index comienza en 1.
