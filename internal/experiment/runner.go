@@ -66,13 +66,14 @@ func selectLeader(statuses []NodeStatus) (NodeStatus, error) {
 	return leader, nil
 }
 
-// resolveFaultTarget espera una vista completa y estable del clúster antes de
-// seleccionar el nodo sobre el que se aplicará la falla.
+// resolveFaultTarget exige quorum y un líder único visible antes de seleccionar
+// el nodo sobre el que se aplicará la falla.
 func resolveFaultTarget(ctx context.Context, config ExperimentConfig, b backend) (string, int, error) {
+	quorum := config.Nodes/2 + 1
 	var lastErr error
 	for {
 		statuses, err := b.Statuses(ctx)
-		if err == nil && len(statuses) == config.Nodes {
+		if err == nil && len(statuses) >= quorum {
 			leader, leaderErr := selectLeader(statuses)
 			if leaderErr == nil {
 				if config.Fault.Target == "lider" {
@@ -91,7 +92,7 @@ func resolveFaultTarget(ctx context.Context, config ExperimentConfig, b backend)
 		} else if err != nil {
 			lastErr = err
 		} else {
-			lastErr = fmt.Errorf("respondieron %d de %d nodos", len(statuses), config.Nodes)
+			lastErr = fmt.Errorf("respondieron %d de %d nodos; se requieren al menos %d", len(statuses), config.Nodes, quorum)
 		}
 
 		select {

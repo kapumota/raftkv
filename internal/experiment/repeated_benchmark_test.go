@@ -136,12 +136,12 @@ func (b *transientStatusBackend) Statuses(ctx context.Context) ([]NodeStatus, er
 		return nil, err
 	}
 	if b.calls == 1 {
-		return nodes[:4], nil
+		return nodes[:2], nil
 	}
-	return nodes, nil
+	return nodes[:3], nil
 }
 
-func TestResolveFaultTargetRetriesIncompleteStatus(t *testing.T) {
+func TestResolveFaultTargetRetriesWithoutQuorum(t *testing.T) {
 	config, _ := LoadConfig(strings.NewReader(validScenario))
 	config.Nodes = 5
 	config.Fault.Target = "lider"
