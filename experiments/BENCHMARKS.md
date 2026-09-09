@@ -106,6 +106,17 @@ entra al resumen G3 si contiene el evento `restauracion_completada`.
 Los tres escenarios con falla la aplican a los 20 segundos durante 10 segundos.
 Esto deja una ventana previa de 20 segundos y una ventana posterior de 30 segundos.
 
+La carga final de G3 usa 40 clientes lógicos y 5 operaciones por segundo. `runLoad`
+mantiene como máximo una escritura activa por cliente y cada escritura tiene un timeout
+de 7 segundos. Con 5 operaciones por segundo pueden acumularse hasta 35 solicitudes
+pendientes si todas alcanzan el timeout; 40 clientes dejan margen sin convertir el
+generador en el cuello de botella.
+
+Esta calibración reemplaza la configuración inicial de 4 clientes y 100 operaciones
+por segundo. En el smoke inicial esa carga produjo miles de `omitida_saturacion`; aumentar
+la concurrencia a cientos de clientes llegó a impedir que `/status` respondiera. La
+campaña definitiva evita ambos extremos y mantiene idéntica carga entre escenarios.
+
 G3 resume la mediana de las métricas obtenidas por ejecución. No concatena todas
 las operaciones para fabricar una única distribución y no sustituye métricas no
 observadas por cero.

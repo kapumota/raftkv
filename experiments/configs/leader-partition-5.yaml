@@ -4,8 +4,8 @@ semilla: 42
 nodos: 5
 despliegue: benchmark
 duracion_segundos: 60
-clientes: 4
-operaciones_por_segundo: 100
+clientes: 40
+operaciones_por_segundo: 5
 falla:
   tipo: particion
   objetivo: lider

@@ -50,6 +50,12 @@ func TestG3ScenarioFiles(t *testing.T) {
 		if config.Nodes != 5 || config.Deployment != "benchmark" || config.Name != "benchmark_fallas" {
 			t.Fatalf("%s no pertenece al benchmark G3", name)
 		}
+		if config.Clients != 40 || config.Rate != 5 {
+			t.Fatalf("%s no usa la carga calibrada de G3", name)
+		}
+		if config.Clients < config.Rate*7 {
+			t.Fatalf("%s no cubre el máximo de solicitudes pendientes del timeout de escritura", name)
+		}
 	}
 }
 
