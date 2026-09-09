@@ -1,4 +1,4 @@
-# Benchmark normal de tres y cinco nodos
+### Benchmarks de tres y cinco nodos
 
 G2 añade `nodos` (3 o 5), `despliegue` (`local` o `benchmark`) y el tipo de falla
 `ninguna`. Los YAML anteriores conservan cinco nodos y despliegue local por defecto.
@@ -8,7 +8,7 @@ Los nuevos despliegues tienen nombres, redes, puertos y volúmenes independiente
 Tres nodos usan 18381 a 18383 y cinco usan 18581 a 18585, siempre en localhost.
 No se simula un clúster de tres apagando dos miembros de uno de cinco.
 
-## Validación
+#### Validación
 
 ```bash
 make fmt
@@ -27,7 +27,7 @@ go build -o /tmp/raftkv-compare ./cmd/benchmark-compare
 /tmp/raftkv-experiment -scenario experiments/configs/normal-5.yaml -check
 ```
 
-## Ejecución secuencial
+#### Ejecución secuencial
 
 Detenga primero el clúster anterior para evitar carga de fondo:
 
@@ -58,7 +58,7 @@ docker compose -p raftkv-g2-5-01 -f docker-compose.benchmarks-5.yml down
 Ejecute cada comando después de comprobar el éxito del anterior. Si el runner
 falla, conserve su JSON y detenga ese despliegue antes de iniciar el siguiente.
 
-## Comparación
+#### Comparación
 
 ```bash
 /tmp/raftkv-compare -three /tmp/raftkv-normal-3-01.json -five /tmp/raftkv-normal-5-01.json
@@ -83,3 +83,79 @@ descriptiva, no evidencia suficiente para concluir qué tamaño es más rápido.
 G3 añadirá ejecuciones repetidas por configuración; G4 organizará los resultados.
 La instrumentación pendiente de G1 permanece explícita: G2 no convierte las
 métricas de seguridad o tiempos no observados en ceros.
+
+#### G3 - Benchmark bajo fallas
+
+G3 conserva el benchmark normal de G2 y añade una campaña repetida sobre cinco
+nodos. La carga es idéntica entre escenarios: misma semilla, duración, clientes,
+tasa y nombre de experimento. Solo cambia la falla.
+
+Los escenarios son:
+
+```text
+sin fallas
+follower caído
+leader caído
+partición de leader
+```
+
+La recuperación no se modela como un quinto tipo de falla. El runner ya restaura
+el nodo o la conectividad durante cada escenario. Una ejecución bajo falla solo
+entra al resumen G3 si contiene el evento `restauracion_completada`.
+
+Los tres escenarios con falla la aplican a los 20 segundos durante 10 segundos.
+Esto deja una ventana previa de 20 segundos y una ventana posterior de 30 segundos.
+
+G3 resume la mediana de las métricas obtenidas por ejecución. No concatena todas
+las operaciones para fabricar una única distribución y no sustituye métricas no
+observadas por cero.
+
+#### Validación de G3
+
+Antes del commit:
+
+```bash
+make fmt
+go test -race ./internal/experiment -count=1 -v
+make validate
+```
+
+La campaña real exige un árbol Git limpio porque cada JSON registra la revisión
+y los cambios del repositorio. Por ello, aplique y valide G3, haga el commit y
+ejecute después los benchmarks.
+
+Prueba corta de dos repeticiones:
+
+```bash
+RUNS=2 OUT_DIR=/tmp/raftkv-g3-smoke ./scripts/benchmark-failures.sh
+```
+
+Campaña prevista:
+
+```bash
+RUNS=30 OUT_DIR=/tmp/raftkv-g3 ./scripts/benchmark-failures.sh
+```
+
+Cada repetición usa el despliegue de cinco nodos de G2. Entre ejecuciones se hace
+`down -v` de forma deliberada para descartar WAL y estado persistente de la
+repetición anterior. Los resultados permanecen en `OUT_DIR`, fuera del
+repositorio.
+
+El script rechaza resultados preexistentes para evitar sobrescribir evidencia.
+
+#### Resumen de G3
+
+Para resumir resultados ya generados:
+
+```bash
+go build -o /tmp/raftkv-failures ./cmd/benchmark-failures
+/tmp/raftkv-failures -dir /tmp/raftkv-g3 -runs 30
+```
+
+La herramienta exige exactamente el número indicado de ejecuciones para cada
+escenario, la misma revisión Git, árbol limpio, carga equivalente y restauración
+completada en todas las ejecuciones con falla.
+
+El resultado sigue siendo descriptivo. La comparación inferencial, intervalos de
+confianza y organización de artefactos reproducibles quedan fuera de G3.
+G4 organizará los resultados crudos y procesados.
