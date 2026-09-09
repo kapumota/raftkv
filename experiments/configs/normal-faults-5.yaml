@@ -4,8 +4,8 @@ semilla: 42
 nodos: 5
 despliegue: benchmark
 duracion_segundos: 60
-clientes: 40
-operaciones_por_segundo: 5
+clientes: 16
+operaciones_por_segundo: 2
 falla:
   tipo: ninguna
   objetivo: ""
