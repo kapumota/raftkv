@@ -14,10 +14,21 @@ import (
 	"github.com/kapumota/raftkv/internal/raft"
 )
 
-const kvProposalTimeout = 5 * time.Second
+const (
+	kvProposalTimeout = 5 * time.Second
+	kvReadTimeout     = 5 * time.Second
+)
 
 type proposalNode interface {
 	Propose(ctx context.Context, cmd raft.Command) error
+}
+
+type readNode interface {
+	ReadIndex(ctx context.Context) (int, error)
+}
+
+type keyValueReader interface {
+	Get(key string) (string, bool)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload map[string]string) {
@@ -64,6 +75,46 @@ func newKVSetHandler(node proposalNode, timeout time.Duration) http.HandlerFunc 
 	}
 }
 
+// newKVGetHandler confirma el liderazgo antes de consultar la máquina de
+// estados y limita el tiempo durante el cual se intenta alcanzar mayoría.
+func newKVGetHandler(node readNode, store keyValueReader, timeout time.Duration) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "metodo_no_permitido"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+
+		_, err := node.ReadIndex(ctx)
+		switch {
+		case err == nil:
+		case errors.Is(err, raft.ErrNotLeader):
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no_es_lider"})
+			return
+		case errors.Is(err, context.DeadlineExceeded):
+			writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "tiempo_de_espera_agotado"})
+			return
+		case errors.Is(err, context.Canceled):
+			writeJSON(w, http.StatusRequestTimeout, map[string]string{"error": "solicitud_cancelada"})
+			return
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "error_interno"})
+			return
+		}
+
+		key := r.URL.Query().Get("key")
+		value, ok := store.Get(key)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no_encontrado"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"key": key, "value": value})
+	}
+}
+
 func main() {
 	id := os.Getenv("NODE_ID")
 	if id == "" {
@@ -107,18 +158,7 @@ func main() {
 	})
 
 	mux.HandleFunc("/kv/set", newKVSetHandler(node, kvProposalTimeout))
-
-	mux.HandleFunc("/kv/get", func(w http.ResponseWriter, r *http.Request) {
-		key := r.URL.Query().Get("key")
-		v, ok := store.Get(key)
-		w.Header().Set("Content-Type", "application/json")
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "no_encontrado"})
-			return
-		}
-		json.NewEncoder(w).Encode(map[string]string{"key": key, "value": v})
-	})
+	mux.HandleFunc("/kv/get", newKVGetHandler(node, store, kvReadTimeout))
 
 	log.Printf("nodo Raft %s escuchando en :%s (peers=%v)", id, port, peers)
 	log.Fatal(http.ListenAndServe(":"+port, mux))

@@ -1,7 +1,8 @@
 package raft
 
 // Command es la operación replicada a través del log de Raft.
-// Por ahora solo soporta SET; GET se sirve localmente sin pasar por el log.
+// Soporta SET y la operación interna NOOP usada como barrera de liderazgo;
+// GET todavía se sirve localmente sin pasar por el log.
 type Command struct {
 	Op    string `json:"op"`
 	Key   string `json:"key,omitempty"`

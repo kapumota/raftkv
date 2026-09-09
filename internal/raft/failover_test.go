@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -92,6 +93,35 @@ func TestCommittedStateSurvivesNodeRestart(t *testing.T) {
 	}
 }
 
+func TestIsolatedLeaderCannotServeLinearizableRead(t *testing.T) {
+	wal, err := NewWAL(t.TempDir())
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	leader := NewNode(
+		"node-1",
+		[]string{"http://127.0.0.1:1", "http://127.0.0.1:2"},
+		wal,
+		NewTransport(),
+		nil,
+	)
+	t.Cleanup(func() { stopNodeLoop(leader) })
+	leader.mu.Lock()
+	leader.currentTerm = 1
+	leader.becomeLeader()
+	leader.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	readIndex, err := leader.ReadIndex(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error inesperado para el líder aislado: se obtuvo %v, se esperaba context.DeadlineExceeded", err)
+	}
+	if readIndex != 0 {
+		t.Fatalf("el líder aislado devolvió un índice de lectura: se obtuvo %d, se esperaba 0", readIndex)
+	}
+}
+
 func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	const nodeCount = 3
 
@@ -123,11 +153,13 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 			t.Fatalf("no se pudo crear el WAL del nodo %d: %v", i+1, err)
 		}
 		machines[i] = newTestStateMachine()
+		transport := NewTransport()
+		transport.client.Timeout = time.Second
 		nodes[i] = NewNode(
 			fmt.Sprintf("node-%d", i+1),
 			peers,
 			wal,
-			NewTransport(),
+			transport,
 			machines[i].apply,
 		)
 
@@ -153,18 +185,23 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	leader.currentTerm = 1
 	leader.becomeLeader()
 	leader.mu.Unlock()
+	barrierCtx, barrierCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer barrierCancel()
+	if err := leader.ConfirmLeadership(barrierCtx); err != nil {
+		t.Fatalf("el líder inicial no pudo confirmar su barrera: %v", err)
+	}
 
 	original := Command{Op: "SET", Key: "saldo", Value: "100"}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := leader.Propose(ctx, original); err != nil {
 		t.Fatalf("la escritura confirmada falló: %v", err)
 	}
 
 	leader.mu.Lock()
-	if leader.commitIndex != 1 {
+	if leader.commitIndex != 2 {
 		leader.mu.Unlock()
-		t.Fatalf("índice de commit inesperado antes de la caída: se obtuvo %d, se esperaba 1", leader.commitIndex)
+		t.Fatalf("índice de commit inesperado antes de la caída: se obtuvo %d, se esperaba 2", leader.commitIndex)
 	}
 	leader.mu.Unlock()
 
@@ -172,7 +209,7 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	var candidateMachine *testStateMachine
 	for i := 1; i < nodeCount; i++ {
 		nodes[i].mu.Lock()
-		hasEntry := len(nodes[i].log) >= 1 && nodes[i].log[0].Command == original
+		hasEntry := len(nodes[i].log) >= 2 && nodes[i].log[1].Command == original
 		nodes[i].mu.Unlock()
 		if hasEntry {
 			candidate = nodes[i]
@@ -187,30 +224,48 @@ func TestAcknowledgedWriteSurvivesLeaderFailure(t *testing.T) {
 	_ = servers[0].Close()
 	stopNodeLoop(leader)
 
-	candidate.startElection()
+	var isLeader bool
+	for attempt := 0; attempt < 3; attempt++ {
+		candidate.startElection()
+		candidate.mu.Lock()
+		isLeader = candidate.state == Leader
+		candidate.mu.Unlock()
+		if isLeader {
+			break
+		}
+	}
 	candidate.mu.Lock()
-	isLeader := candidate.state == Leader
 	term := candidate.currentTerm
-	entryPreserved := len(candidate.log) >= 1 && candidate.log[0].Command == original
+	entryPreserved := len(candidate.log) >= 2 && candidate.log[1].Command == original
 	candidate.mu.Unlock()
 
 	if !isLeader {
 		t.Fatal("el seguidor con la escritura confirmada no ganó la nueva elección")
 	}
-	if term != 2 {
-		t.Fatalf("término inesperado después de la nueva elección: se obtuvo %d, se esperaba 2", term)
+	if term < 2 {
+		t.Fatalf("término inesperado después de la nueva elección: se obtuvo %d, se esperaba al menos 2", term)
 	}
 	if !entryPreserved {
 		t.Fatal("la escritura confirmada desapareció después de la caída del líder")
 	}
 
-	// Una entrada del término nuevo permite confirmar también las entradas
-	// comprometidas que fueron creadas en términos anteriores.
+	// La barrera del nuevo líder permite confirmar también las entradas creadas
+	// en términos anteriores; la escritura posterior verifica que puede avanzar.
 	followUp := Command{Op: "SET", Key: "marcador", Value: "1"}
-	followUpCtx, followUpCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	followUpCtx, followUpCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer followUpCancel()
 	if err := candidate.Propose(followUpCtx, followUp); err != nil {
 		t.Fatalf("el nuevo líder no pudo confirmar una escritura posterior: %v", err)
+	}
+
+	readCtx, readCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer readCancel()
+	readIndex, err := candidate.ReadIndex(readCtx)
+	if err != nil {
+		t.Fatalf("el nuevo líder no pudo confirmar una lectura linealizable: %v", err)
+	}
+	if readIndex < 2 {
+		t.Fatalf("índice insuficiente para observar la escritura original: se obtuvo %d, se esperaba al menos 2", readIndex)
 	}
 
 	value, ok := candidateMachine.get("saldo")

@@ -3,9 +3,20 @@ package raft
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func newTestRPCServer(t *testing.T, node *Node) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	RegisterRPCHandlers(mux, node)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
 
 func newTestNode(t *testing.T, apply ApplyFunc) *Node {
 	t.Helper()
@@ -22,6 +33,219 @@ func TestFollowerRejectsProposal(t *testing.T) {
 	err := node.Propose(context.Background(), Command{Op: "SET", Key: "a", Value: "1"})
 	if !errors.Is(err, ErrNotLeader) {
 		t.Fatalf("error inesperado: se obtuvo %v, se esperaba ErrNotLeader", err)
+	}
+}
+
+func TestReplicationProgressDoesNotRegressWithStaleReplies(t *testing.T) {
+	node := newTestNode(t, nil)
+	peer := "http://node-2:8080"
+	node.matchIndex[peer] = 3
+	node.nextIndex[peer] = 4
+
+	node.recordReplicationSuccess(peer, 1)
+	if node.matchIndex[peer] != 3 || node.nextIndex[peer] != 4 {
+		t.Fatalf("una respuesta exitosa antigua redujo el progreso: matchIndex=%d, nextIndex=%d", node.matchIndex[peer], node.nextIndex[peer])
+	}
+
+	node.recordReplicationFailure(peer, 2)
+	if node.nextIndex[peer] != 4 {
+		t.Fatalf("una respuesta fallida antigua redujo nextIndex: se obtuvo %d, se esperaba 4", node.nextIndex[peer])
+	}
+
+	node.recordReplicationFailure(peer, 4)
+	if node.nextIndex[peer] != 4 {
+		t.Fatalf("nextIndex retrocedió por debajo del progreso confirmado: se obtuvo %d, se esperaba 4", node.nextIndex[peer])
+	}
+}
+
+func TestBecomeLeaderAppendsCurrentTermBarrier(t *testing.T) {
+	dir := t.TempDir()
+	wal, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	previous := LogEntry{
+		Term:    1,
+		Index:   1,
+		Command: Command{Op: "SET", Key: "saldo", Value: "100"},
+	}
+	if err := wal.AppendEntries([]LogEntry{previous}); err != nil {
+		t.Fatalf("no se pudo preparar el log: %v", err)
+	}
+
+	var applied []Command
+	node := NewNode("node-1", nil, wal, NewTransport(), func(cmd Command) {
+		applied = append(applied, cmd)
+	})
+	t.Cleanup(func() { stopNodeLoop(node) })
+
+	node.mu.Lock()
+	node.currentTerm = 2
+	node.becomeLeader()
+	node.mu.Unlock()
+
+	node.mu.Lock()
+	if len(node.log) != 2 {
+		node.mu.Unlock()
+		t.Fatalf("longitud inesperada del log: se obtuvo %d, se esperaba 2", len(node.log))
+	}
+	barrier := node.log[1]
+	barrierIndex := node.leaderBarrierIndex
+	commitIndex := node.commitIndex
+	lastApplied := node.lastApplied
+	node.mu.Unlock()
+
+	if barrier.Term != 2 {
+		t.Fatalf("término inesperado de la barrera: se obtuvo %d, se esperaba 2", barrier.Term)
+	}
+	if barrier.Index != 2 || barrierIndex != 2 {
+		t.Fatalf("índice inesperado de la barrera: entrada=%d, nodo=%d, se esperaba 2", barrier.Index, barrierIndex)
+	}
+	if barrier.Command.Op != noOpOperation {
+		t.Fatalf("operación inesperada de la barrera: se obtuvo %q, se esperaba %q", barrier.Command.Op, noOpOperation)
+	}
+	if commitIndex != 2 || lastApplied != 2 {
+		t.Fatalf("progreso inesperado después de confirmar la barrera: commitIndex=%d, lastApplied=%d", commitIndex, lastApplied)
+	}
+	if len(applied) != 1 || applied[0] != previous.Command {
+		t.Fatalf("comandos aplicados inesperados: se obtuvo %+v", applied)
+	}
+
+	persistedLog, err := wal.LoadLog()
+	if err != nil {
+		t.Fatalf("no se pudo cargar el log persistente: %v", err)
+	}
+	if len(persistedLog) != 2 || persistedLog[1] != barrier {
+		t.Fatalf("la barrera no quedó persistida correctamente: se obtuvo %+v", persistedLog)
+	}
+}
+
+func TestConfirmLeadershipWithMajority(t *testing.T) {
+	follower1 := newTestNode(t, nil)
+	follower2 := newTestNode(t, nil)
+	t.Cleanup(func() {
+		stopNodeLoop(follower1)
+		stopNodeLoop(follower2)
+	})
+	server1 := newTestRPCServer(t, follower1)
+	server2 := newTestRPCServer(t, follower2)
+
+	wal, err := NewWAL(t.TempDir())
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL del líder: %v", err)
+	}
+	leader := NewNode(
+		"node-1",
+		[]string{server1.URL, server2.URL},
+		wal,
+		NewTransport(),
+		nil,
+	)
+	t.Cleanup(func() { stopNodeLoop(leader) })
+	leader.mu.Lock()
+	leader.currentTerm = 1
+	leader.becomeLeader()
+	leader.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := leader.ConfirmLeadership(ctx); err != nil {
+		t.Fatalf("no se pudo confirmar el liderazgo con mayoría: %v", err)
+	}
+
+	leader.mu.Lock()
+	defer leader.mu.Unlock()
+	if leader.commitIndex < leader.leaderBarrierIndex {
+		t.Fatalf("la barrera no quedó confirmada: commitIndex=%d, leaderBarrierIndex=%d", leader.commitIndex, leader.leaderBarrierIndex)
+	}
+}
+
+func TestConfirmLeadershipRequiresMajority(t *testing.T) {
+	wal, err := NewWAL(t.TempDir())
+	if err != nil {
+		t.Fatalf("no se pudo crear el WAL: %v", err)
+	}
+	leader := NewNode(
+		"node-1",
+		[]string{"http://127.0.0.1:1", "http://127.0.0.1:2"},
+		wal,
+		NewTransport(),
+		nil,
+	)
+	t.Cleanup(func() { stopNodeLoop(leader) })
+	leader.mu.Lock()
+	leader.currentTerm = 1
+	leader.becomeLeader()
+	leader.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	err = leader.ConfirmLeadership(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error inesperado sin mayoría: se obtuvo %v, se esperaba context.DeadlineExceeded", err)
+	}
+}
+
+func TestFollowerCannotConfirmLeadership(t *testing.T) {
+	node := newTestNode(t, nil)
+
+	err := node.ConfirmLeadership(context.Background())
+	if !errors.Is(err, ErrNotLeader) {
+		t.Fatalf("error inesperado: se obtuvo %v, se esperaba ErrNotLeader", err)
+	}
+}
+
+func TestReadIndexIncludesPreviousCommittedWrite(t *testing.T) {
+	node := newTestNode(t, nil)
+	t.Cleanup(func() { stopNodeLoop(node) })
+	node.mu.Lock()
+	node.currentTerm = 1
+	node.becomeLeader()
+	node.mu.Unlock()
+
+	cmd := Command{Op: "SET", Key: "saldo", Value: "100"}
+	if err := node.Propose(context.Background(), cmd); err != nil {
+		t.Fatalf("no se pudo confirmar la escritura previa: %v", err)
+	}
+
+	readIndex, err := node.ReadIndex(context.Background())
+	if err != nil {
+		t.Fatalf("no se pudo obtener el índice de lectura: %v", err)
+	}
+	if readIndex != 2 {
+		t.Fatalf("índice de lectura inesperado: se obtuvo %d, se esperaba 2", readIndex)
+	}
+}
+
+func TestFollowerCannotGetReadIndex(t *testing.T) {
+	node := newTestNode(t, nil)
+
+	readIndex, err := node.ReadIndex(context.Background())
+	if !errors.Is(err, ErrNotLeader) {
+		t.Fatalf("error inesperado: se obtuvo %v, se esperaba ErrNotLeader", err)
+	}
+	if readIndex != 0 {
+		t.Fatalf("un follower devolvió un índice de lectura: se obtuvo %d, se esperaba 0", readIndex)
+	}
+}
+
+func TestReadIndexRespectsCanceledContext(t *testing.T) {
+	node := newTestNode(t, nil)
+	node.mu.Lock()
+	node.currentTerm = 1
+	node.becomeLeader()
+	node.mu.Unlock()
+	t.Cleanup(func() { stopNodeLoop(node) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	readIndex, err := node.ReadIndex(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error inesperado: se obtuvo %v, se esperaba context.Canceled", err)
+	}
+	if readIndex != 0 {
+		t.Fatalf("se devolvió un índice con el contexto cancelado: se obtuvo %d, se esperaba 0", readIndex)
 	}
 }
 

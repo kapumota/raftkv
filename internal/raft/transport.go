@@ -2,6 +2,7 @@ package raft
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -18,12 +19,17 @@ func NewTransport() *Transport {
 	return &Transport{client: &http.Client{Timeout: 300 * time.Millisecond}}
 }
 
-func (t *Transport) post(url string, body interface{}, out interface{}) error {
+func (t *Transport) post(ctx context.Context, url string, body interface{}, out interface{}) error {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	resp, err := t.client.Post(url, "application/json", bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := t.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -33,13 +39,17 @@ func (t *Transport) post(url string, body interface{}, out interface{}) error {
 
 func (t *Transport) SendRequestVote(peerBaseURL string, args RequestVoteArgs) (RequestVoteReply, error) {
 	var reply RequestVoteReply
-	err := t.post(peerBaseURL+"/raft/request-vote", args, &reply)
+	err := t.post(context.Background(), peerBaseURL+"/raft/request-vote", args, &reply)
 	return reply, err
 }
 
 func (t *Transport) SendAppendEntries(peerBaseURL string, args AppendEntriesArgs) (AppendEntriesReply, error) {
+	return t.SendAppendEntriesContext(context.Background(), peerBaseURL, args)
+}
+
+func (t *Transport) SendAppendEntriesContext(ctx context.Context, peerBaseURL string, args AppendEntriesArgs) (AppendEntriesReply, error) {
 	var reply AppendEntriesReply
-	err := t.post(peerBaseURL+"/raft/append-entries", args, &reply)
+	err := t.post(ctx, peerBaseURL+"/raft/append-entries", args, &reply)
 	return reply, err
 }
 
