@@ -66,6 +66,42 @@ func selectLeader(statuses []NodeStatus) (NodeStatus, error) {
 	return leader, nil
 }
 
+// resolveFaultTarget espera una vista completa y estable del clúster antes de
+// seleccionar el nodo sobre el que se aplicará la falla.
+func resolveFaultTarget(ctx context.Context, config ExperimentConfig, b backend) (string, int, error) {
+	var lastErr error
+	for {
+		statuses, err := b.Statuses(ctx)
+		if err == nil && len(statuses) == config.Nodes {
+			leader, leaderErr := selectLeader(statuses)
+			if leaderErr == nil {
+				if config.Fault.Target == "lider" {
+					return leader.ID, leader.Term, nil
+				}
+				sort.Slice(statuses, func(i, j int) bool { return statuses[i].ID < statuses[j].ID })
+				for _, status := range statuses {
+					if status.State == "seguidor" {
+						return status.ID, status.Term, nil
+					}
+				}
+				lastErr = fmt.Errorf("no se encontró un seguidor disponible")
+			} else {
+				lastErr = leaderErr
+			}
+		} else if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("respondieron %d de %d nodos", len(statuses), config.Nodes)
+		}
+
+		select {
+		case <-ctx.Done():
+			return "", 0, fmt.Errorf("no se pudo resolver el objetivo de la falla: %w: %v", ctx.Err(), lastErr)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
 func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (result ExperimentResult, err error) {
 	result.Config = config
 	defer func() {
@@ -114,6 +150,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 	started := result.Started
 	go func() { workDone <- runLoad(workCtx, config, b, &hint, started) }()
 	var target string
+	var targetTerm int
 	dirty := false
 	event := func(name string, term int) {
 		result.Events = append(result.Events, Event{Name: name, At: time.Now().UTC(), Node: target, Term: term})
@@ -161,29 +198,11 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 			if config.Fault.Type == "ninguna" {
 				continue
 			}
-			statuses, err = b.Statuses(ctx)
+			resolveCtx, resolveCancel := context.WithTimeout(ctx, 3*time.Second)
+			target, targetTerm, err = resolveFaultTarget(resolveCtx, config, b)
+			resolveCancel()
 			if err != nil {
 				return
-			}
-			leader, err = selectLeader(statuses)
-			if err != nil || len(statuses) != config.Nodes {
-				return result, fmt.Errorf("no se pudo resolver el objetivo con todos los nodos disponibles: %v", err)
-			}
-			target = leader.ID
-			targetTerm := leader.Term
-			if config.Fault.Target == "seguidor" {
-				sort.Slice(statuses, func(i, j int) bool { return statuses[i].ID < statuses[j].ID })
-				target = ""
-				for _, status := range statuses {
-					if status.State == "seguidor" {
-						target = status.ID
-						targetTerm = status.Term
-						break
-					}
-				}
-				if target == "" {
-					return result, fmt.Errorf("no se encontró un seguidor disponible")
-				}
 			}
 			if time.Since(started)+time.Duration(config.Fault.Duration)*time.Second >= time.Duration(config.Duration)*time.Second {
 				return result, fmt.Errorf("ya no queda tiempo para aplicar y restaurar la falla")

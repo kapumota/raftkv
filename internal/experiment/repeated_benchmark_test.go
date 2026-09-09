@@ -1,6 +1,7 @@
 package experiment
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -120,5 +121,39 @@ falla:
 	})
 	if _, err := AggregateBenchmarkRuns([]ExperimentResult{result}); err != nil {
 		t.Fatalf("se rechazó una ejecución restaurada: %v", err)
+	}
+}
+
+type transientStatusBackend struct {
+	fakeBackend
+	calls int
+}
+
+func (b *transientStatusBackend) Statuses(ctx context.Context) ([]NodeStatus, error) {
+	b.calls++
+	nodes, err := b.fakeBackend.Statuses(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if b.calls == 1 {
+		return nodes[:4], nil
+	}
+	return nodes, nil
+}
+
+func TestResolveFaultTargetRetriesIncompleteStatus(t *testing.T) {
+	config, _ := LoadConfig(strings.NewReader(validScenario))
+	config.Nodes = 5
+	config.Fault.Target = "lider"
+	b := &transientStatusBackend{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	target, term, err := resolveFaultTarget(ctx, config, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target != "nodo-2" || term != 1 || b.calls < 2 {
+		t.Fatalf("objetivo inesperado: target=%s term=%d calls=%d", target, term, b.calls)
 	}
 }
