@@ -1,8 +1,8 @@
 # Escenarios de inyección de fallas
 
-F1 define el formato declarativo de los experimentos. Estos archivos todavía
-no ejecutan carga ni modifican contenedores. F2 incorporará el parser, la
-validación y el runner con identificadores en inglés y mensajes en español.
+F1 define el formato declarativo. F2 incorpora el parser y el runner Go para
+Linux y Docker local. La guía [RUNNER.md](RUNNER.md) describe cómo validar
+escenarios y ejecutar experimentos conservando los volúmenes existentes.
 
 ## Escenarios
 
