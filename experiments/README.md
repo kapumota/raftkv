@@ -86,3 +86,121 @@ Repetir el escenario y la semilla reproduce el plan y los datos de carga.
 No garantiza elecciones, latencias ni intercalados idénticos. La comparación
 entre ejecuciones requiere condiciones iniciales equivalentes y registrar las
 desviaciones observadas.
+
+## G4 - Resultados reproducibles
+
+G4 separa la ejecución del experimento de la reproducción de sus resultados.
+
+```text
+experiments/
+|-- configs/
+|-- raw/
+|-- processed/
+`-- README.md
+```
+
+`configs/` contiene los escenarios versionados. `raw/` contiene los JSON producidos
+por el runner. `processed/` contiene únicamente artefactos derivados de esos JSON.
+
+Cada ejecución se identifica por la revisión Git y por `CAMPAIGN`. Esto permite
+conservar, por ejemplo, un smoke test y la campaña final sin sobrescribir evidencia.
+
+### Ejecutar la campaña
+
+La campaña final por defecto ejecuta 30 repeticiones de cada uno de los cuatro
+escenarios G3, es decir, 120 ejecuciones.
+
+```bash
+make experiment
+```
+
+Equivale a `RUNS=30 CAMPAIGN=final`.
+
+Para una prueba corta independiente:
+
+```bash
+make experiment RUNS=2 CAMPAIGN=smoke
+```
+
+`make experiment` exige un árbol Git limpio, valida el proyecto, obtiene la revisión
+Git completa y guarda los resultados en:
+
+```text
+experiments/raw/<revision-git>/<campana>/
+```
+
+Los JSON de `raw/` están ignorados mientras se ejecuta la campaña. Esto es
+deliberado: el runner G3 exige que cada ejecución observe la misma revisión y un
+árbol limpio. Una vez terminada y validada la campaña, los datos crudos pueden
+versionarse explícitamente:
+
+```bash
+git add -f experiments/raw/<revision-git>/final
+```
+
+No elimine ni sobrescriba una campaña existente. Use otro valor de `CAMPAIGN` si
+necesita conservar otra ejecución de la misma revisión.
+
+### Reproducir resultados procesados
+
+`make reproduce` no inicia contenedores ni vuelve a ejecutar RaftKV. Procesa
+exclusivamente los JSON existentes:
+
+```bash
+make reproduce
+```
+
+Para una campaña específica:
+
+```bash
+make reproduce REVISION=<revision-git> RUNS=30 CAMPAIGN=final
+```
+
+La revisión solicitada debe existir y ser ancestro de `HEAD`. Se permiten commits
+posteriores únicamente cuando sus cambios están confinados a `experiments/raw/`
+y `experiments/processed/`. Si cambió código o configuración, la reproducción se
+rechaza para evitar procesar evidencia histórica con una implementación distinta.
+
+La salida se guarda en:
+
+```text
+experiments/processed/<revision-git>/<campana>/
+|-- summary.txt
+|-- raw-manifest.sha256
+|-- config-manifest.sha256
+`-- metadata.txt
+```
+
+`summary.txt` se genera con `cmd/benchmark-failures`, por lo que conserva las
+validaciones G3: número exacto de ejecuciones, misma revisión Git, árbol limpio,
+configuración comparable y restauración completada en los escenarios con falla.
+
+`raw-manifest.sha256` fija criptográficamente cada JSON crudo.
+`config-manifest.sha256` fija los cuatro escenarios YAML utilizados.
+`metadata.txt` registra revisión, campaña y tamaño esperado.
+
+### Comprobar reproducción
+
+Después de versionar una campaña y sus resultados procesados en un commit de
+evidencia:
+
+```bash
+make reproduce REVISION=<revision-experimental> RUNS=30 CAMPAIGN=final
+git diff --exit-code -- experiments/processed/<revision-experimental>/final
+```
+
+Si el segundo comando no produce diferencias, los artefactos procesados se
+reconstruyeron de forma idéntica desde los datos crudos.
+
+### Versionar la evidencia final
+
+Después de revisar la campaña de 30 repeticiones:
+
+```bash
+git add -f experiments/raw/<revision-git>/final
+git add experiments/processed/<revision-git>/final
+git diff --check
+```
+
+Los datos crudos deben conservarse sin edición manual. Si se necesita corregir el
+pipeline experimental, debe generarse una nueva campaña desde una nueva revisión.
