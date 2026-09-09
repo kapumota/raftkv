@@ -1,0 +1,11 @@
+version: 1
+nombre: "recuperación de un seguidor rezagado"
+semilla: 42
+duracion_segundos: 90
+clientes: 4
+operaciones_por_segundo: 100
+falla:
+  tipo: caida
+  objetivo: seguidor
+  instante_segundos: 15
+  duracion_segundos: 30

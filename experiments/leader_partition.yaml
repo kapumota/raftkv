@@ -1,0 +1,11 @@
+version: 1
+nombre: "partición del líder"
+semilla: 42
+duracion_segundos: 60
+clientes: 4
+operaciones_por_segundo: 100
+falla:
+  tipo: particion
+  objetivo: lider
+  instante_segundos: 20
+  duracion_segundos: 10
