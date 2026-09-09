@@ -28,6 +28,7 @@ type clusterNetwork struct {
 	mu       sync.RWMutex
 	handlers map[string]http.Handler
 	blocked  map[string]bool
+	groups   map[string]int
 	stopped  bool
 }
 
@@ -48,6 +49,9 @@ func (r *clusterTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	target := req.URL.Host
 	if r.network.stopped || r.network.blocked[r.source] || r.network.blocked[target] {
 		return nil, fmt.Errorf("enlace desconectado entre %s y %s", r.source, target)
+	}
+	if r.network.groups != nil && r.network.groups[r.source] != r.network.groups[target] {
+		return nil, fmt.Errorf("partición entre %s y %s", r.source, target)
 	}
 	if err := req.Context().Err(); err != nil {
 		return nil, err
@@ -163,6 +167,42 @@ func (c *TestCluster) setDisconnected(nodeID string, disconnected bool) {
 	}
 	c.network.mu.Lock()
 	c.network.blocked[nodeID] = disconnected
+	c.network.mu.Unlock()
+}
+
+// Partition corta los enlaces entre grupos y conserva los enlaces internos.
+// Debe incluir cada nodo exactamente una vez. Los cortes de Disconnect siguen
+// vigentes; Reconnect solo elimina esos cortes individuales.
+func (c *TestCluster) Partition(groups ...[]string) {
+	c.t.Helper()
+	membership := make(map[string]int)
+	for group, ids := range groups {
+		if len(ids) == 0 {
+			c.t.Fatal("una partición no puede contener grupos vacíos")
+		}
+		for _, id := range ids {
+			if _, ok := c.nodes[id]; !ok {
+				c.t.Fatalf("nodo desconocido: %s", id)
+			}
+			if _, repeated := membership[id]; repeated {
+				c.t.Fatalf("nodo repetido en la partición: %s", id)
+			}
+			membership[id] = group
+		}
+	}
+	if len(membership) != len(c.nodes) {
+		c.t.Fatal("la partición debe incluir todos los nodos")
+	}
+	c.network.mu.Lock()
+	c.network.groups = membership
+	c.network.mu.Unlock()
+}
+
+// Heal restablece todos los enlaces, incluidos los cortes individuales.
+func (c *TestCluster) Heal() {
+	c.network.mu.Lock()
+	c.network.groups = nil
+	c.network.blocked = make(map[string]bool)
 	c.network.mu.Unlock()
 }
 
