@@ -129,13 +129,15 @@ Git completa y guarda los resultados en:
 experiments/raw/<revision-git>/<campana>/
 ```
 
-Los JSON de `raw/` están ignorados mientras se ejecuta la campaña. Esto es
-deliberado: el runner G3 exige que cada ejecución observe la misma revisión y un
-árbol limpio. Una vez terminada y validada la campaña, los datos crudos pueden
-versionarse explícitamente:
+Los contenidos de `raw/` y `processed/` están ignorados mientras se ejecutan
+smoke tests y campañas. Esto es deliberado: cada ejecución debe observar la misma
+revisión y un árbol Git limpio, y los artefactos derivados de un smoke no deben
+bloquear una campaña posterior. Una vez terminada y validada la campaña, la
+evidencia puede versionarse explícitamente:
 
 ```bash
 git add -f experiments/raw/<revision-git>/final
+git add -f experiments/processed/<revision-git>/final
 ```
 
 No elimine ni sobrescriba una campaña existente. Use otro valor de `CAMPAIGN` si
@@ -198,7 +200,7 @@ Después de revisar la campaña de 30 repeticiones:
 
 ```bash
 git add -f experiments/raw/<revision-git>/final
-git add experiments/processed/<revision-git>/final
+git add -f experiments/processed/<revision-git>/final
 git diff --check
 ```
 
