@@ -295,13 +295,29 @@ func (n *Node) broadcastAppendEntries() {
 				return
 			}
 			if reply.Success {
-				n.matchIndex[peer] = prevLogIndex + len(entries)
-				n.nextIndex[peer] = n.matchIndex[peer] + 1
+				n.recordReplicationSuccess(peer, prevLogIndex+len(entries))
 				n.advanceCommitIndex()
-			} else if n.nextIndex[peer] > 1 {
-				n.nextIndex[peer]--
+			} else {
+				n.recordReplicationFailure(peer, ni)
 			}
 		}(p)
+	}
+}
+
+// recordReplicationSuccess asume que el llamador ya mantiene bloqueado n.mu.
+func (n *Node) recordReplicationSuccess(peer string, matched int) {
+	if matched > n.matchIndex[peer] {
+		n.matchIndex[peer] = matched
+	}
+	if n.matchIndex[peer]+1 > n.nextIndex[peer] {
+		n.nextIndex[peer] = n.matchIndex[peer] + 1
+	}
+}
+
+// recordReplicationFailure asume que el llamador ya mantiene bloqueado n.mu.
+func (n *Node) recordReplicationFailure(peer string, sentNextIndex int) {
+	if n.nextIndex[peer] == sentNextIndex && n.nextIndex[peer] > n.matchIndex[peer]+1 {
+		n.nextIndex[peer]--
 	}
 }
 
@@ -460,16 +476,13 @@ func (n *Node) confirmPeer(ctx context.Context, peer string, term, barrierIndex 
 			return false, ErrNotLeader
 		}
 		if reply.Success {
-			n.matchIndex[peer] = prevLogIndex + len(entries)
-			n.nextIndex[peer] = n.matchIndex[peer] + 1
+			n.recordReplicationSuccess(peer, prevLogIndex+len(entries))
 			n.advanceCommitIndex()
 			confirmed := n.matchIndex[peer] >= barrierIndex && n.commitIndex >= barrierIndex
 			n.mu.Unlock()
 			return confirmed, nil
 		}
-		if n.nextIndex[peer] > 1 {
-			n.nextIndex[peer]--
-		}
+		n.recordReplicationFailure(peer, nextIndex)
 		n.mu.Unlock()
 	}
 }

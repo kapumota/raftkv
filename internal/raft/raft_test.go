@@ -36,6 +36,28 @@ func TestFollowerRejectsProposal(t *testing.T) {
 	}
 }
 
+func TestReplicationProgressDoesNotRegressWithStaleReplies(t *testing.T) {
+	node := newTestNode(t, nil)
+	peer := "http://node-2:8080"
+	node.matchIndex[peer] = 3
+	node.nextIndex[peer] = 4
+
+	node.recordReplicationSuccess(peer, 1)
+	if node.matchIndex[peer] != 3 || node.nextIndex[peer] != 4 {
+		t.Fatalf("una respuesta exitosa antigua redujo el progreso: matchIndex=%d, nextIndex=%d", node.matchIndex[peer], node.nextIndex[peer])
+	}
+
+	node.recordReplicationFailure(peer, 2)
+	if node.nextIndex[peer] != 4 {
+		t.Fatalf("una respuesta fallida antigua redujo nextIndex: se obtuvo %d, se esperaba 4", node.nextIndex[peer])
+	}
+
+	node.recordReplicationFailure(peer, 4)
+	if node.nextIndex[peer] != 4 {
+		t.Fatalf("nextIndex retrocedió por debajo del progreso confirmado: se obtuvo %d, se esperaba 4", node.nextIndex[peer])
+	}
+}
+
 func TestBecomeLeaderAppendsCurrentTermBarrier(t *testing.T) {
 	dir := t.TempDir()
 	wal, err := NewWAL(dir)
