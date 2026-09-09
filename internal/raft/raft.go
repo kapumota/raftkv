@@ -146,6 +146,10 @@ func (n *Node) startElection() {
 	votes := 1
 	var voteMu sync.Mutex
 	majority := make(chan struct{}, 1)
+	// En un clúster de un nodo, el voto propio ya constituye la mayoría.
+	if votes > (len(peers)+1)/2 {
+		majority <- struct{}{}
+	}
 
 	for _, p := range peers {
 		go func(peer string) {
