@@ -146,6 +146,10 @@ func (n *Node) startElection() {
 	votes := 1
 	var voteMu sync.Mutex
 	majority := make(chan struct{}, 1)
+	// En un clúster de un nodo, el voto propio ya constituye la mayoría.
+	if votes > (len(peers)+1)/2 {
+		majority <- struct{}{}
+	}
 
 	for _, p := range peers {
 		go func(peer string) {
@@ -588,7 +592,11 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs) AppendEntriesReply {
 	if args.Term > n.currentTerm || n.state != Follower {
 		n.becomeFollower(args.Term)
 	}
+	reply.Term = n.currentTerm
 	n.resetElectionTimer()
+	if args.PrevLogIndex < 0 {
+		return reply
+	}
 
 	if args.PrevLogIndex > 0 {
 		if args.PrevLogIndex > len(n.log) {
@@ -599,20 +607,33 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs) AppendEntriesReply {
 		}
 	}
 
-	if len(args.Entries) > 0 {
-		newLog := append([]LogEntry{}, n.log[:args.PrevLogIndex]...)
-		newLog = append(newLog, args.Entries...)
+	// Una petición retrasada puede contener solo un prefijo ya recibido.
+	// Se conserva el sufijo local salvo que exista un conflicto de términos.
+	for i, entry := range args.Entries {
+		position := args.PrevLogIndex + i
+		if position < len(n.log) && n.log[position].Term == entry.Term {
+			continue
+		}
+		if position < n.commitIndex {
+			return reply // Una entrada confirmada nunca puede reemplazarse.
+		}
+		newLog := append([]LogEntry{}, n.log[:position]...)
+		newLog = append(newLog, args.Entries[i:]...)
+		if err := n.wal.RewriteLog(newLog); err != nil {
+			return reply
+		}
 		n.log = newLog
-		_ = n.wal.RewriteLog(n.log)
+		break
 	}
 
-	if args.LeaderCommit > n.commitIndex {
+	// Solo esta petición acredita coincidencia hasta su última entrada.
+	confirmed := args.PrevLogIndex + len(args.Entries)
+	if args.LeaderCommit < confirmed {
+		confirmed = args.LeaderCommit
+	}
+	if confirmed > n.commitIndex {
 		previousCommitIndex := n.commitIndex
-		if args.LeaderCommit < len(n.log) {
-			n.commitIndex = args.LeaderCommit
-		} else {
-			n.commitIndex = len(n.log)
-		}
+		n.commitIndex = confirmed
 		if err := n.saveState(); err != nil {
 			n.commitIndex = previousCommitIndex
 			return reply

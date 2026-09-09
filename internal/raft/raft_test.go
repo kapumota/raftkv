@@ -129,6 +129,9 @@ func TestConfirmLeadershipWithMajority(t *testing.T) {
 	})
 	server1 := newTestRPCServer(t, follower1)
 	server2 := newTestRPCServer(t, follower2)
+	// Esta prueba verifica éxito con disco y HTTP reales, no latencia máxima.
+	transport := NewTransport()
+	transport.client.Timeout = 2 * time.Second
 
 	wal, err := NewWAL(t.TempDir())
 	if err != nil {
@@ -138,7 +141,7 @@ func TestConfirmLeadershipWithMajority(t *testing.T) {
 		"node-1",
 		[]string{server1.URL, server2.URL},
 		wal,
-		NewTransport(),
+		transport,
 		nil,
 	)
 	t.Cleanup(func() { stopNodeLoop(leader) })
@@ -147,7 +150,7 @@ func TestConfirmLeadershipWithMajority(t *testing.T) {
 	leader.becomeLeader()
 	leader.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := leader.ConfirmLeadership(ctx); err != nil {
 		t.Fatalf("no se pudo confirmar el liderazgo con mayoría: %v", err)
