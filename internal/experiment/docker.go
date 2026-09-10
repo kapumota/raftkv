@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -33,16 +34,24 @@ type endpoint struct {
 }
 
 type dockerBackend struct {
+	ids       []string
 	client    *http.Client
 	urls      map[string]string
 	network   string
 	endpoints map[string]endpoint
 }
 
-func newDockerBackend() *dockerBackend {
+func newDockerBackend(config ExperimentConfig) *dockerBackend {
 	d := &dockerBackend{client: &http.Client{Timeout: 7 * time.Second}, urls: map[string]string{}, endpoints: map[string]endpoint{}}
-	for i := 1; i <= 5; i++ {
-		d.urls[fmt.Sprintf("raft-node-%d", i)] = fmt.Sprintf("http://127.0.0.1:%d", 18080+i)
+	prefix, port := "raft-node", 18080
+	if config.Deployment == "benchmark" {
+		prefix = fmt.Sprintf("raft-bench-%d-node", config.Nodes)
+		port = 18080 + config.Nodes*100
+	}
+	for i := 1; i <= config.Nodes; i++ {
+		id := fmt.Sprintf("%s-%d", prefix, i)
+		d.ids = append(d.ids, id)
+		d.urls[id] = fmt.Sprintf("http://127.0.0.1:%d", port+i)
 	}
 	return d
 }
@@ -58,22 +67,64 @@ func dockerCommand(ctx context.Context, args ...string) ([]byte, error) {
 }
 
 func (d *dockerBackend) Statuses(ctx context.Context) ([]NodeStatus, error) {
-	var statuses []NodeStatus
-	for i := 1; i <= 5; i++ {
-		id := fmt.Sprintf("raft-node-%d", i)
-		call, cancel := context.WithTimeout(ctx, 400*time.Millisecond)
-		req, _ := http.NewRequestWithContext(call, http.MethodGet, d.urls[id]+"/status", nil)
-		resp, err := d.client.Do(req)
-		if err == nil {
-			var status NodeStatus
-			err = json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&status)
-			resp.Body.Close()
-			if err == nil && resp.StatusCode == http.StatusOK && status.ID == id {
-				statuses = append(statuses, status)
-			}
-		}
-		cancel()
+	type statusResult struct {
+		status NodeStatus
+		ok     bool
 	}
+
+	results := make(chan statusResult, len(d.ids))
+
+	for _, id := range d.ids {
+		go func(id string) {
+			call, cancel := context.WithTimeout(ctx, 1200*time.Millisecond)
+			defer cancel()
+
+			req, err := http.NewRequestWithContext(
+				call,
+				http.MethodGet,
+				d.urls[id]+"/status",
+				nil,
+			)
+			if err != nil {
+				results <- statusResult{}
+				return
+			}
+
+			resp, err := d.client.Do(req)
+			if err != nil {
+				results <- statusResult{}
+				return
+			}
+			defer resp.Body.Close()
+
+			var status NodeStatus
+			err = json.NewDecoder(
+				io.LimitReader(resp.Body, 65536),
+			).Decode(&status)
+
+			if err != nil ||
+				resp.StatusCode != http.StatusOK ||
+				status.ID != id {
+				results <- statusResult{}
+				return
+			}
+
+			results <- statusResult{status: status, ok: true}
+		}(id)
+	}
+
+	statuses := make([]NodeStatus, 0, len(d.ids))
+	for range d.ids {
+		result := <-results
+		if result.ok {
+			statuses = append(statuses, result.status)
+		}
+	}
+
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i].ID < statuses[j].ID
+	})
+
 	if len(statuses) == 0 {
 		return nil, fmt.Errorf("ningún nodo respondió al estado")
 	}
@@ -100,8 +151,7 @@ func inspectContainer(ctx context.Context, id string) (containerInfo, error) {
 
 func (d *dockerBackend) Prepare(ctx context.Context) (map[string]string, error) {
 	metadata := map[string]string{}
-	for i := 1; i <= 5; i++ {
-		id := fmt.Sprintf("raft-node-%d", i)
+	for _, id := range d.ids {
 		info, err := inspectContainer(ctx, id)
 		if err != nil {
 			return nil, err

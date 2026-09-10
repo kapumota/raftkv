@@ -1,0 +1,5 @@
+# Los JSON se ignoran durante la campaña para que cada ejecución observe
+# un árbol Git limpio. Tras validar la campaña final pueden versionarse
+# explícitamente con: git add -f experiments/raw/<revision>
+*
+!.gitignore

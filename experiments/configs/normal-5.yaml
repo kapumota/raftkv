@@ -1,0 +1,13 @@
+version: 1
+nombre: benchmark_normal
+semilla: 42
+nodos: 5
+despliegue: benchmark
+duracion_segundos: 60
+clientes: 4
+operaciones_por_segundo: 100
+falla:
+  tipo: ninguna
+  objetivo: ""
+  instante_segundos: 0
+  duracion_segundos: 0

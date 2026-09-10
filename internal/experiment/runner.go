@@ -45,7 +45,10 @@ func RunExperiment(config ExperimentConfig) (ExperimentResult, error) {
 }
 
 func RunExperimentContext(ctx context.Context, config ExperimentConfig) (ExperimentResult, error) {
-	return runExperiment(ctx, config, newDockerBackend())
+	if err := config.Validate(); err != nil {
+		return ExperimentResult{Config: config, Error: err.Error()}, err
+	}
+	return runExperiment(ctx, config, newDockerBackend(config))
 }
 
 func selectLeader(statuses []NodeStatus) (NodeStatus, error) {
@@ -61,6 +64,55 @@ func selectLeader(statuses []NodeStatus) (NodeStatus, error) {
 		return leader, fmt.Errorf("se esperaba un líder único, se observaron %d", count)
 	}
 	return leader, nil
+}
+
+// resolveFaultTarget exige quorum y un líder único visible antes de seleccionar
+// el nodo sobre el que se aplicará la falla.
+func resolveFaultTarget(ctx context.Context, config ExperimentConfig, b backend) (string, int, error) {
+	quorum := config.Nodes/2 + 1
+	var lastErr error
+	for {
+		statuses, err := b.Statuses(ctx)
+		if err == nil && len(statuses) >= quorum {
+			leader, leaderErr := selectLeader(statuses)
+			if leaderErr == nil {
+				if config.Fault.Target == "lider" {
+					return leader.ID, leader.Term, nil
+				}
+				sort.Slice(statuses, func(i, j int) bool { return statuses[i].ID < statuses[j].ID })
+				for _, status := range statuses {
+					if status.State == "seguidor" {
+						return status.ID, status.Term, nil
+					}
+				}
+				lastErr = fmt.Errorf("no se encontró un seguidor disponible")
+			} else {
+				lastErr = leaderErr
+			}
+		} else if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("respondieron %d de %d nodos; se requieren al menos %d", len(statuses), config.Nodes, quorum)
+		}
+
+		select {
+		case <-ctx.Done():
+			return "", 0, fmt.Errorf("no se pudo resolver el objetivo de la falla: %w: %v", ctx.Err(), lastErr)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+// updateLeaderHint conserva el último líder conocido cuando la observación
+// del plano de control es transitoria o incompleta.
+func updateLeaderHint(hint *atomic.Value, statuses []NodeStatus, statusErr error) {
+	if statusErr != nil {
+		return
+	}
+	candidate, err := selectLeader(statuses)
+	if err == nil {
+		hint.Store(candidate.ID)
+	}
 }
 
 func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (result ExperimentResult, err error) {
@@ -83,7 +135,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 		if err == nil {
 			leader, err = selectLeader(statuses)
 		}
-		allReady := len(statuses) == 5
+		allReady := len(statuses) == config.Nodes
 		for _, status := range statuses {
 			allReady = allReady && status.CommitIndex > 0
 		}
@@ -111,6 +163,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 	started := result.Started
 	go func() { workDone <- runLoad(workCtx, config, b, &hint, started) }()
 	var target string
+	var targetTerm int
 	dirty := false
 	event := func(name string, term int) {
 		result.Events = append(result.Events, Event{Name: name, At: time.Now().UTC(), Node: target, Term: term})
@@ -141,7 +194,7 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 	defer faultTimer.Stop()
 	end := time.NewTimer(time.Duration(config.Duration) * time.Second)
 	defer end.Stop()
-	refresh := time.NewTicker(250 * time.Millisecond)
+	refresh := time.NewTicker(time.Second)
 	defer refresh.Stop()
 	var restoreAt <-chan time.Time
 	var restoreTimer *time.Timer
@@ -155,29 +208,14 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 		case <-ctx.Done():
 			return result, ctx.Err()
 		case <-faultTimer.C:
-			statuses, err = b.Statuses(ctx)
+			if config.Fault.Type == "ninguna" {
+				continue
+			}
+			resolveCtx, resolveCancel := context.WithTimeout(ctx, 3*time.Second)
+			target, targetTerm, err = resolveFaultTarget(resolveCtx, config, b)
+			resolveCancel()
 			if err != nil {
 				return
-			}
-			leader, err = selectLeader(statuses)
-			if err != nil || len(statuses) != 5 {
-				return result, fmt.Errorf("no se pudo resolver el objetivo con todos los nodos disponibles: %v", err)
-			}
-			target = leader.ID
-			targetTerm := leader.Term
-			if config.Fault.Target == "seguidor" {
-				sort.Slice(statuses, func(i, j int) bool { return statuses[i].ID < statuses[j].ID })
-				target = ""
-				for _, status := range statuses {
-					if status.State == "seguidor" {
-						target = status.ID
-						targetTerm = status.Term
-						break
-					}
-				}
-				if target == "" {
-					return result, fmt.Errorf("no se encontró un seguidor disponible")
-				}
 			}
 			if time.Since(started)+time.Duration(config.Fault.Duration)*time.Second >= time.Duration(config.Duration)*time.Second {
 				return result, fmt.Errorf("ya no queda tiempo para aplicar y restaurar la falla")
@@ -200,14 +238,9 @@ func runExperiment(ctx context.Context, config ExperimentConfig, b backend) (res
 			restoreAt = nil
 		case <-refresh.C:
 			current, statusErr := b.Statuses(ctx)
-			candidate, leaderErr := selectLeader(current)
-			if statusErr == nil && leaderErr == nil {
-				hint.Store(candidate.ID)
-			} else {
-				hint.Store("")
-			}
+			updateLeaderHint(&hint, current, statusErr)
 		case <-end.C:
-			if target == "" || dirty {
+			if config.Fault.Type != "ninguna" && (target == "" || dirty) {
 				return result, fmt.Errorf("la falla o su restauración excedieron la ventana prevista")
 			}
 			log.Print("Experimento finalizado.")

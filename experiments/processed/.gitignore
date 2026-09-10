@@ -1,0 +1,5 @@
+# Los resultados derivados se ignoran durante smoke/campañas para no
+# ensuciar el árbol Git entre ejecuciones. La evidencia final se versiona
+# explícitamente con git add -f.
+*
+!.gitignore
