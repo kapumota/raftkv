@@ -1,0 +1,1133 @@
+{
+  "revision_git": "8ba7a131c4f452aac014a4c628794062fa1a8c9b",
+  "cambios_git": "",
+  "archivo_escenario": "experiments/configs/leader-partition-5.yaml",
+  "experimento": {
+    "configuracion": {
+      "nodos": 5,
+      "despliegue": "benchmark",
+      "version": 1,
+      "nombre": "benchmark_fallas",
+      "semilla": 42,
+      "duracion_segundos": 60,
+      "clientes": 16,
+      "operaciones_por_segundo": 2,
+      "falla": {
+        "tipo": "particion",
+        "objetivo": "lider",
+        "instante_segundos": 20,
+        "duracion_segundos": 10
+      }
+    },
+    "inicio": "2026-09-10T02:13:05.660351905Z",
+    "fin": "2026-09-10T02:14:05.660536533Z",
+    "estado_inicial": {
+      "raft-bench-5-node-1": "imagen=sha256:ce057cf0d004b7851061288c1cba541a556f2f1b8f7f1b7e73382cfcf3a9b2cc; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n414515935627f95a9b57f19ab4865c36bb1430b50fc28d538126d1c21aac1aa7  /data/state.json\n",
+      "raft-bench-5-node-2": "imagen=sha256:42ca99ef27755c4967918ab02129d1d1d31a13fb137b38ba87c2f5b7a456e650; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n414515935627f95a9b57f19ab4865c36bb1430b50fc28d538126d1c21aac1aa7  /data/state.json\n",
+      "raft-bench-5-node-3": "imagen=sha256:6a55e3ca4702de54dc77cd2741e0fa55f64bb7e729e377b6450c8092a2ead26c; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n414515935627f95a9b57f19ab4865c36bb1430b50fc28d538126d1c21aac1aa7  /data/state.json\n",
+      "raft-bench-5-node-4": "imagen=sha256:c73ecd7e27266e3c31cefa77f502e642c04f5566cdf984c10be08dd5720adf13; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n414515935627f95a9b57f19ab4865c36bb1430b50fc28d538126d1c21aac1aa7  /data/state.json\n",
+      "raft-bench-5-node-5": "imagen=sha256:8bbafadfed20caf56057b819fb12d0b1b7f353718e79686f4bb4077569714fc2; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n414515935627f95a9b57f19ab4865c36bb1430b50fc28d538126d1c21aac1aa7  /data/state.json\n"
+    },
+    "eventos": [
+      {
+        "nombre": "objetivo_seleccionado",
+        "instante": "2026-09-10T02:13:25.77065347Z",
+        "nodo": "raft-bench-5-node-2",
+        "termino": 1
+      },
+      {
+        "nombre": "falla_aplicada",
+        "instante": "2026-09-10T02:13:26.27159088Z",
+        "nodo": "raft-bench-5-node-2",
+        "termino": 1
+      },
+      {
+        "nombre": "restauracion_completada",
+        "instante": "2026-09-10T02:13:38.531017477Z",
+        "nodo": "raft-bench-5-node-2"
+      }
+    ],
+    "operaciones": [
+      {
+        "secuencia": 0,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-0",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 913731583
+      },
+      {
+        "secuencia": 1,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-1",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1270831871
+      },
+      {
+        "secuencia": 2,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-2",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 770796685
+      },
+      {
+        "secuencia": 3,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-3",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 389143137
+      },
+      {
+        "secuencia": 4,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-4",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 204235534
+      },
+      {
+        "secuencia": 5,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-5",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 670098215
+      },
+      {
+        "secuencia": 6,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-6",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 311479505
+      },
+      {
+        "secuencia": 7,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-7",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 213753414
+      },
+      {
+        "secuencia": 8,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-8",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 103455623
+      },
+      {
+        "secuencia": 9,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-9",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 470124781
+      },
+      {
+        "secuencia": 10,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-10",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 107178431
+      },
+      {
+        "secuencia": 11,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-11",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 3108928489
+      },
+      {
+        "secuencia": 12,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-12",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 2608499940
+      },
+      {
+        "secuencia": 13,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-13",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 2109093787
+      },
+      {
+        "secuencia": 14,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-14",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1655295547
+      },
+      {
+        "secuencia": 15,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-15",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1201351098
+      },
+      {
+        "secuencia": 16,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-16",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 701575027
+      },
+      {
+        "secuencia": 17,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-17",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 738927009
+      },
+      {
+        "secuencia": 18,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-18",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 305792745
+      },
+      {
+        "secuencia": 19,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-19",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 180115465
+      },
+      {
+        "secuencia": 20,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-20",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 179737459
+      },
+      {
+        "secuencia": 21,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-21",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1407039568
+      },
+      {
+        "secuencia": 22,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-22",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 966921074
+      },
+      {
+        "secuencia": 23,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-23",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1780542719
+      },
+      {
+        "secuencia": 24,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-24",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1280149859
+      },
+      {
+        "secuencia": 25,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-25",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 992578766
+      },
+      {
+        "secuencia": 26,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-26",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 492446823
+      },
+      {
+        "secuencia": 27,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-27",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 230867836
+      },
+      {
+        "secuencia": 28,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-28",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 255341366
+      },
+      {
+        "secuencia": 29,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-29",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 303579384
+      },
+      {
+        "secuencia": 30,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-30",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1096425102
+      },
+      {
+        "secuencia": 31,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-31",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 596427909
+      },
+      {
+        "secuencia": 32,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-32",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 220742096
+      },
+      {
+        "secuencia": 33,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-33",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 215219695
+      },
+      {
+        "secuencia": 34,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-34",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 215558078
+      },
+      {
+        "secuencia": 35,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-35",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 236125263
+      },
+      {
+        "secuencia": 36,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-36",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 1142116076
+      },
+      {
+        "secuencia": 37,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-37",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 642820331
+      },
+      {
+        "secuencia": 38,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-38",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 263295947
+      },
+      {
+        "secuencia": 39,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-39",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-2",
+        "duracion_ns": 184936462
+      },
+      {
+        "secuencia": 40,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-40",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-2",
+        "error": "Post \"http://127.0.0.1:18582/kv/set\": EOF",
+        "duracion_ns": 148245492
+      },
+      {
+        "secuencia": 41,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-41",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-2",
+        "error": "Post \"http://127.0.0.1:18582/kv/set\": dial tcp 127.0.0.1:18582: connect: connection refused",
+        "duracion_ns": 364553
+      },
+      {
+        "secuencia": 42,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-42",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-2",
+        "error": "Post \"http://127.0.0.1:18582/kv/set\": dial tcp 127.0.0.1:18582: connect: connection refused",
+        "duracion_ns": 436369
+      },
+      {
+        "secuencia": 43,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-43",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-2",
+        "error": "Post \"http://127.0.0.1:18582/kv/set\": dial tcp 127.0.0.1:18582: connect: connection refused",
+        "duracion_ns": 424148
+      },
+      {
+        "secuencia": 44,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-44",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-2",
+        "error": "Post \"http://127.0.0.1:18582/kv/set\": dial tcp 127.0.0.1:18582: connect: connection refused",
+        "duracion_ns": 387478
+      },
+      {
+        "secuencia": 45,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-45",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-2",
+        "error": "Post \"http://127.0.0.1:18582/kv/set\": dial tcp 127.0.0.1:18582: connect: connection refused",
+        "duracion_ns": 131249
+      },
+      {
+        "secuencia": 46,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-46",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-2",
+        "error": "Post \"http://127.0.0.1:18582/kv/set\": dial tcp 127.0.0.1:18582: connect: connection refused",
+        "duracion_ns": 189215
+      },
+      {
+        "secuencia": 47,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-47",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 363170621
+      },
+      {
+        "secuencia": 48,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-48",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 111124671
+      },
+      {
+        "secuencia": 49,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-49",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 729601605
+      },
+      {
+        "secuencia": 50,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-50",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1368593164
+      },
+      {
+        "secuencia": 51,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-51",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 869378072
+      },
+      {
+        "secuencia": 52,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-52",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 461952616
+      },
+      {
+        "secuencia": 53,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-53",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 145381117
+      },
+      {
+        "secuencia": 54,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-54",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1663006157
+      },
+      {
+        "secuencia": 55,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-55",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1162783326
+      },
+      {
+        "secuencia": 56,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-56",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 721860828
+      },
+      {
+        "secuencia": 57,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-57",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 338864587
+      },
+      {
+        "secuencia": 58,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-58",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 181748905
+      },
+      {
+        "secuencia": 59,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-59",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 479859943
+      },
+      {
+        "secuencia": 60,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-60",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 183874307
+      },
+      {
+        "secuencia": 61,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-61",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1934164326
+      },
+      {
+        "secuencia": 62,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-62",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1434504866
+      },
+      {
+        "secuencia": 63,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-63",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1073784720
+      },
+      {
+        "secuencia": 64,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-64",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 645833883
+      },
+      {
+        "secuencia": 65,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-65",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 295174135
+      },
+      {
+        "secuencia": 66,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-66",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 224953331
+      },
+      {
+        "secuencia": 67,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-67",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 189623952
+      },
+      {
+        "secuencia": 68,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-68",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1104887920
+      },
+      {
+        "secuencia": 69,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-69",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 604349008
+      },
+      {
+        "secuencia": 70,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-70",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 251857870
+      },
+      {
+        "secuencia": 71,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-71",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 231839318
+      },
+      {
+        "secuencia": 72,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-72",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 336444477
+      },
+      {
+        "secuencia": 73,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-73",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1271030233
+      },
+      {
+        "secuencia": 74,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-74",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 770219905
+      },
+      {
+        "secuencia": 75,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-75",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 395409779
+      },
+      {
+        "secuencia": 76,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-76",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 219060599
+      },
+      {
+        "secuencia": 77,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-77",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 227154304
+      },
+      {
+        "secuencia": 78,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-78",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 228415836
+      },
+      {
+        "secuencia": 79,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-79",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 3006982715
+      },
+      {
+        "secuencia": 80,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-80",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 2507695436
+      },
+      {
+        "secuencia": 81,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-81",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 2152823650
+      },
+      {
+        "secuencia": 82,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-82",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1652929341
+      },
+      {
+        "secuencia": 83,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-83",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1152954764
+      },
+      {
+        "secuencia": 84,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-84",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 753022135
+      },
+      {
+        "secuencia": 85,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-85",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 252804195
+      },
+      {
+        "secuencia": 86,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-86",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 188136931
+      },
+      {
+        "secuencia": 87,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-87",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 152394002
+      },
+      {
+        "secuencia": 88,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-88",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 170964347
+      },
+      {
+        "secuencia": 89,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-89",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 190941329
+      },
+      {
+        "secuencia": 90,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-90",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 200724211
+      },
+      {
+        "secuencia": 91,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-91",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 205284474
+      },
+      {
+        "secuencia": 92,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-92",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 945464920
+      },
+      {
+        "secuencia": 93,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-93",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 462177434
+      },
+      {
+        "secuencia": 94,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-94",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 271090964
+      },
+      {
+        "secuencia": 95,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-95",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 252227338
+      },
+      {
+        "secuencia": 96,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-96",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 300284316
+      },
+      {
+        "secuencia": 97,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-97",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 347219984
+      },
+      {
+        "secuencia": 98,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-98",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 808754440
+      },
+      {
+        "secuencia": 99,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-99",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 438870088
+      },
+      {
+        "secuencia": 100,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-100",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 211710164
+      },
+      {
+        "secuencia": 101,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-101",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 229700332
+      },
+      {
+        "secuencia": 102,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-102",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 269282305
+      },
+      {
+        "secuencia": 103,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-103",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 366937732
+      },
+      {
+        "secuencia": 104,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-104",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 792063637
+      },
+      {
+        "secuencia": 105,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-105",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 427730891
+      },
+      {
+        "secuencia": 106,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-106",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 217912724
+      },
+      {
+        "secuencia": 107,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-107",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 226432925
+      },
+      {
+        "secuencia": 108,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-108",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 227604506
+      },
+      {
+        "secuencia": 109,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-109",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 393965916
+      },
+      {
+        "secuencia": 110,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-110",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 851741147
+      },
+      {
+        "secuencia": 111,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-111",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 589975729
+      },
+      {
+        "secuencia": 112,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-112",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 278263885
+      },
+      {
+        "secuencia": 113,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-113",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 221063682
+      },
+      {
+        "secuencia": 114,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-114",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 206061177
+      },
+      {
+        "secuencia": 115,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-115",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 326173989
+      },
+      {
+        "secuencia": 116,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-116",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 778933677
+      },
+      {
+        "secuencia": 117,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-117",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 461141657
+      },
+      {
+        "secuencia": 118,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-118",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 283664463
+      },
+      {
+        "secuencia": 119,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-119",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 287171803
+      }
+    ]
+  }
+}

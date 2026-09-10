@@ -1,0 +1,5 @@
+revision_git=8ba7a131c4f452aac014a4c628794062fa1a8c9b
+campana=final
+runs_por_escenario=30
+escenarios=4
+resultados_esperados=120

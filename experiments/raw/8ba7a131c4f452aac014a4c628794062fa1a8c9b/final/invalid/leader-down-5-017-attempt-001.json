@@ -1,0 +1,459 @@
+{
+  "revision_git": "8ba7a131c4f452aac014a4c628794062fa1a8c9b",
+  "cambios_git": "",
+  "archivo_escenario": "experiments/configs/leader-down-5.yaml",
+  "experimento": {
+    "configuracion": {
+      "nodos": 5,
+      "despliegue": "benchmark",
+      "version": 1,
+      "nombre": "benchmark_fallas",
+      "semilla": 42,
+      "duracion_segundos": 60,
+      "clientes": 16,
+      "operaciones_por_segundo": 2,
+      "falla": {
+        "tipo": "caida",
+        "objetivo": "lider",
+        "instante_segundos": 20,
+        "duracion_segundos": 10
+      }
+    },
+    "inicio": "2026-09-10T01:32:54.323044247Z",
+    "fin": "2026-09-10T01:33:17.529870212Z",
+    "estado_inicial": {
+      "raft-bench-5-node-1": "imagen=sha256:ce057cf0d004b7851061288c1cba541a556f2f1b8f7f1b7e73382cfcf3a9b2cc; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n9e31f285d53f55449bd91a9dcdc385fa374604bbef9144a996b3a79dfe2f069c  /data/state.json\n",
+      "raft-bench-5-node-2": "imagen=sha256:42ca99ef27755c4967918ab02129d1d1d31a13fb137b38ba87c2f5b7a456e650; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n9e31f285d53f55449bd91a9dcdc385fa374604bbef9144a996b3a79dfe2f069c  /data/state.json\n",
+      "raft-bench-5-node-3": "imagen=sha256:6a55e3ca4702de54dc77cd2741e0fa55f64bb7e729e377b6450c8092a2ead26c; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n9e31f285d53f55449bd91a9dcdc385fa374604bbef9144a996b3a79dfe2f069c  /data/state.json\n",
+      "raft-bench-5-node-4": "imagen=sha256:c73ecd7e27266e3c31cefa77f502e642c04f5566cdf984c10be08dd5720adf13; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n9e31f285d53f55449bd91a9dcdc385fa374604bbef9144a996b3a79dfe2f069c  /data/state.json\n",
+      "raft-bench-5-node-5": "imagen=sha256:8bbafadfed20caf56057b819fb12d0b1b7f353718e79686f4bb4077569714fc2; red=raftkv-g4-8ba7a131c4f4-final_raftnet; WAL=c38d60d788e5d22d5675bc5dfdf910a6c84633f6d6e10d33d1a727cbd050817c  /data/log.jsonl\n9e31f285d53f55449bd91a9dcdc385fa374604bbef9144a996b3a79dfe2f069c  /data/state.json\n"
+    },
+    "eventos": null,
+    "operaciones": [
+      {
+        "secuencia": 0,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-0",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 451530082
+      },
+      {
+        "secuencia": 1,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-1",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 987645394
+      },
+      {
+        "secuencia": 2,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-2",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 662045577
+      },
+      {
+        "secuencia": 3,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-3",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 279252051
+      },
+      {
+        "secuencia": 4,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-4",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 176905709
+      },
+      {
+        "secuencia": 5,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-5",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 197727654
+      },
+      {
+        "secuencia": 6,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-6",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 220788265
+      },
+      {
+        "secuencia": 7,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-7",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 221607011
+      },
+      {
+        "secuencia": 8,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-8",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 800719836
+      },
+      {
+        "secuencia": 9,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-9",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 501838341
+      },
+      {
+        "secuencia": 10,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-10",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 195105517
+      },
+      {
+        "secuencia": 11,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-11",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 193554615
+      },
+      {
+        "secuencia": 12,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-12",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 210526290
+      },
+      {
+        "secuencia": 13,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-13",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 221722160
+      },
+      {
+        "secuencia": 14,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-14",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1250064957
+      },
+      {
+        "secuencia": 15,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-15",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 750489990
+      },
+      {
+        "secuencia": 16,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-16",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 413195245
+      },
+      {
+        "secuencia": 17,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-17",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 197783208
+      },
+      {
+        "secuencia": 18,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-18",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 493992981
+      },
+      {
+        "secuencia": 19,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-19",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 791885864
+      },
+      {
+        "secuencia": 20,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-20",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 376217276
+      },
+      {
+        "secuencia": 21,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-21",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 1414685051
+      },
+      {
+        "secuencia": 22,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-22",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 914800673
+      },
+      {
+        "secuencia": 23,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-23",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 635695857
+      },
+      {
+        "secuencia": 24,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-24",
+        "resultado": "confirmada",
+        "estado_http": 200,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 253386994
+      },
+      {
+        "secuencia": 25,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-25",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7000964496
+      },
+      {
+        "secuencia": 26,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-26",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7000258877
+      },
+      {
+        "secuencia": 27,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-27",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7000875864
+      },
+      {
+        "secuencia": 28,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-28",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7001124601
+      },
+      {
+        "secuencia": 29,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-29",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7000640874
+      },
+      {
+        "secuencia": 30,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-30",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7000333325
+      },
+      {
+        "secuencia": 31,
+        "cliente": 15,
+        "clave": "experimento-benchmark_fallas-42-31",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7000789815
+      },
+      {
+        "secuencia": 32,
+        "cliente": 0,
+        "clave": "experimento-benchmark_fallas-42-32",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context deadline exceeded",
+        "duracion_ns": 7000726640
+      },
+      {
+        "secuencia": 33,
+        "cliente": 1,
+        "clave": "experimento-benchmark_fallas-42-33",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 6706586992
+      },
+      {
+        "secuencia": 34,
+        "cliente": 2,
+        "clave": "experimento-benchmark_fallas-42-34",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 6206297926
+      },
+      {
+        "secuencia": 35,
+        "cliente": 3,
+        "clave": "experimento-benchmark_fallas-42-35",
+        "resultado": "incierta",
+        "estado_http": 503,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 5614521717
+      },
+      {
+        "secuencia": 36,
+        "cliente": 4,
+        "clave": "experimento-benchmark_fallas-42-36",
+        "resultado": "incierta",
+        "estado_http": 503,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 5113470894
+      },
+      {
+        "secuencia": 37,
+        "cliente": 5,
+        "clave": "experimento-benchmark_fallas-42-37",
+        "resultado": "incierta",
+        "estado_http": 503,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 4614506598
+      },
+      {
+        "secuencia": 38,
+        "cliente": 6,
+        "clave": "experimento-benchmark_fallas-42-38",
+        "resultado": "incierta",
+        "estado_http": 503,
+        "nodo": "raft-bench-5-node-1",
+        "duracion_ns": 4114548580
+      },
+      {
+        "secuencia": 39,
+        "cliente": 7,
+        "clave": "experimento-benchmark_fallas-42-39",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 3706418531
+      },
+      {
+        "secuencia": 40,
+        "cliente": 8,
+        "clave": "experimento-benchmark_fallas-42-40",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 3206161229
+      },
+      {
+        "secuencia": 41,
+        "cliente": 9,
+        "clave": "experimento-benchmark_fallas-42-41",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 2705638200
+      },
+      {
+        "secuencia": 42,
+        "cliente": 10,
+        "clave": "experimento-benchmark_fallas-42-42",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 2205554567
+      },
+      {
+        "secuencia": 43,
+        "cliente": 11,
+        "clave": "experimento-benchmark_fallas-42-43",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 1705919229
+      },
+      {
+        "secuencia": 44,
+        "cliente": 12,
+        "clave": "experimento-benchmark_fallas-42-44",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 1206547641
+      },
+      {
+        "secuencia": 45,
+        "cliente": 13,
+        "clave": "experimento-benchmark_fallas-42-45",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 706446850
+      },
+      {
+        "secuencia": 46,
+        "cliente": 14,
+        "clave": "experimento-benchmark_fallas-42-46",
+        "resultado": "incierta",
+        "nodo": "raft-bench-5-node-1",
+        "error": "Post \"http://127.0.0.1:18581/kv/set\": context canceled",
+        "duracion_ns": 206597996
+      }
+    ],
+    "error": "no se pudo resolver el objetivo de la falla: context deadline exceeded: se esperaba un líder único, se observaron 0"
+  }
+}
