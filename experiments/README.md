@@ -4,6 +4,11 @@ F1 define el formato declarativo. F2 incorpora el parser y el runner Go para
 Linux y Docker local. La guía [RUNNER.md](RUNNER.md) describe cómo validar
 escenarios y ejecutar experimentos conservando los volúmenes existentes.
 
+La guía [ARTIFACT_REPRODUCTION.md](ARTIFACT_REPRODUCTION.md) documenta cómo
+verificar la integridad de la evidencia, reproducir históricamente G4,
+reproducir byte a byte el análisis H2 y distinguir reproducción computacional
+de una nueva replicación experimental.
+
 ## Escenarios
 
 | Archivo | Objetivo | Falla programada | Restauración programada | Fin |
