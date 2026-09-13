@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="400" viewBox="0 0 960 400">
+<style>
+text{font-family:Arial,Helvetica,sans-serif;fill:#111}.title{font-size:22px;font-weight:700;text-anchor:middle}.subtitle{font-size:12px;text-anchor:middle}.label{font-size:14px;text-anchor:end}.label-small{font-size:11px;text-anchor:end}.tick{font-size:11px;text-anchor:middle}.axis{font-size:13px;text-anchor:middle;font-weight:600}.value{font-size:11px}.pvalue{font-size:10px}.grid{stroke:#ddd;stroke-width:1}.zero{stroke:#555;stroke-width:1.5}.interval{stroke:#111;stroke-width:2}.cap{stroke:#111;stroke-width:1.5}.point{fill:#111;stroke:#111}.point-open{fill:#fff;stroke:#111;stroke-width:1.5}
+</style>
+<text class="title" x="480" y="34">Throughput por escenario</text>
+<text class="subtitle" x="480" y="58">mediana e IQR, n=30 por escenario, revision 8ba7a131</text>
+<line class="grid" x1="220.00" y1="72" x2="220.00" y2="342"/>
+<text class="tick" x="220.00" y="364">1.58</text>
+<line class="grid" x1="390.00" y1="72" x2="390.00" y2="342"/>
+<text class="tick" x="390.00" y="364">1.70</text>
+<line class="grid" x1="560.00" y1="72" x2="560.00" y2="342"/>
+<text class="tick" x="560.00" y="364">1.81</text>
+<line class="grid" x1="730.00" y1="72" x2="730.00" y2="342"/>
+<text class="tick" x="730.00" y="364">1.93</text>
+<line class="grid" x1="900.00" y1="72" x2="900.00" y2="342"/>
+<text class="tick" x="900.00" y="364">2.04</text>
+<text class="label" x="202" y="97.00">sin fallas</text>
+<line class="interval" x1="715.62" y1="92.00" x2="834.19" y2="92.00"/>
+<line class="cap" x1="715.62" y1="84.00" x2="715.62" y2="100.00"/>
+<line class="cap" x1="834.19" y1="84.00" x2="834.19" y2="100.00"/>
+<circle class="point" cx="812.35" cy="92.00" r="5"/>
+<text class="value" x="822.35" y="82.00">1.983</text>
+<text class="label" x="202" y="155.00">follower caído</text>
+<line class="interval" x1="561.33" y1="150.00" x2="830.67" y2="150.00"/>
+<line class="cap" x1="561.33" y1="142.00" x2="561.33" y2="158.00"/>
+<line class="cap" x1="830.67" y1="142.00" x2="830.67" y2="158.00"/>
+<circle class="point" cx="795.12" cy="150.00" r="5"/>
+<text class="value" x="805.12" y="140.00">1.972</text>
+<text class="label" x="202" y="213.00">leader caído</text>
+<line class="interval" x1="395.98" y1="208.00" x2="640.91" y2="208.00"/>
+<line class="cap" x1="395.98" y1="200.00" x2="395.98" y2="216.00"/>
+<line class="cap" x1="640.91" y1="200.00" x2="640.91" y2="216.00"/>
+<circle class="point" cx="555.18" cy="208.00" r="5"/>
+<text class="value" x="565.18" y="198.00">1.808</text>
+<text class="label" x="202" y="271.00">partición de leader</text>
+<line class="interval" x1="285.81" y1="266.00" x2="616.92" y2="266.00"/>
+<line class="cap" x1="285.81" y1="258.00" x2="285.81" y2="274.00"/>
+<line class="cap" x1="616.92" y1="258.00" x2="616.92" y2="274.00"/>
+<circle class="point" cx="567.44" cy="266.00" r="5"/>
+<text class="value" x="577.44" y="256.00">1.817</text>
+<text class="axis" x="560" y="392">writes/s</text>
+</svg>
