@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kapumota/raftkv/internal/experiment"
 )
 
 func TestFinalCampaignExtractionReproducesG4(t *testing.T) {
@@ -168,5 +170,100 @@ func TestWriteDescriptiveCSVProducesStableSchema(t *testing.T) {
 	}
 	if err := writeDescriptiveCSV(output, rows); err == nil {
 		t.Fatal("se sobrescribió un CSV descriptivo existente")
+	}
+}
+
+func TestBuildEffectRowsUsesBaselineAndStablePointEstimates(t *testing.T) {
+	dir := filepath.Join("..", "..", "experiments", "raw", finalRevision, "final")
+	runs, _, err := collectRuns(dir, 30, finalRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := buildEffectRows(runs, 200, 0.95, 20260912)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 18 {
+		t.Fatalf("se esperaban 18 comparaciones y se obtuvieron %d", len(rows))
+	}
+
+	expectedThroughputMedian := map[string]float64{
+		"follower caído":      1.971589773172238,
+		"leader caído":        1.8083056893217422,
+		"partición de leader": 1.816650967595013,
+	}
+	const baselineMedian = 1.9833165015409095
+	seenThroughput := 0
+	for _, row := range rows {
+		if row.Baseline != "sin fallas" || row.Estimate.BaselineN != 30 || row.Estimate.ScenarioN != 30 {
+			t.Fatalf("comparación inesperada: %+v", row)
+		}
+		if row.Metric != "throughput" {
+			continue
+		}
+		seenThroughput++
+		want, ok := expectedThroughputMedian[row.Scenario]
+		if !ok {
+			t.Fatalf("escenario inesperado para throughput: %s", row.Scenario)
+		}
+		if row.Estimate.BaselineMedian != baselineMedian || row.Estimate.ScenarioMedian != want {
+			t.Fatalf("medianas inesperadas para %s: %+v", row.Scenario, row.Estimate)
+		}
+		if row.Estimate.RelativeChangePercent == nil {
+			t.Fatalf("%s: falta cambio relativo de throughput", row.Scenario)
+		}
+		if row.BootstrapSeed != experiment.DeriveAnalysisSeed(20260912, row.Scenario, row.Metric) {
+			t.Fatalf("%s: semilla bootstrap inestable", row.Scenario)
+		}
+	}
+	if seenThroughput != 3 {
+		t.Fatalf("se esperaban tres comparaciones de throughput y se observaron %d", seenThroughput)
+	}
+}
+
+func TestWriteEffectsCSVProducesStableSchema(t *testing.T) {
+	dir := filepath.Join("..", "..", "experiments", "raw", finalRevision, "final")
+	runs, _, err := collectRuns(dir, 30, finalRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := buildEffectRows(runs, 50, 0.95, 20260912)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := filepath.Join(t.TempDir(), "effects.csv")
+	if err := writeEffectsCSV(output, rows); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	records, err := csv.NewReader(file).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 19 {
+		t.Fatalf("se esperaban cabecera + 18 filas y se obtuvieron %d registros", len(records))
+	}
+	wantHeader := []string{
+		"baseline", "scenario", "metric", "unit", "n_baseline", "n_scenario",
+		"baseline_median", "scenario_median", "median_difference",
+		"median_difference_ci_low", "median_difference_ci_high", "relative_change_percent",
+		"cliffs_delta", "cliffs_delta_ci_low", "cliffs_delta_ci_high",
+		"bootstrap_replicas", "confidence_level", "analysis_seed", "bootstrap_seed",
+	}
+	for i := range wantHeader {
+		if records[0][i] != wantHeader[i] {
+			t.Fatalf("cabecera de efectos inesperada: %v", records[0])
+		}
+	}
+	if records[1][0] != "sin fallas" || records[1][1] != "follower caído" || records[1][2] != "throughput" || records[1][15] != "50" {
+		t.Fatalf("primera fila de efectos inesperada: %v", records[1])
+	}
+	if err := writeEffectsCSV(output, rows); err == nil {
+		t.Fatal("se sobrescribió un CSV de efectos existente")
 	}
 }

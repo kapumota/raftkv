@@ -55,6 +55,18 @@ type descriptiveMetric struct {
 	Value func(runRow) (float64, bool)
 }
 
+type effectRow struct {
+	Baseline      string
+	Scenario      string
+	Metric        string
+	Unit          string
+	AnalysisSeed  int64
+	BootstrapSeed int64
+	Replicas      int
+	Confidence    float64
+	Estimate      experiment.EffectEstimate
+}
+
 var scenarios = []scenarioSpec{
 	{Label: "sin fallas", Pattern: "normal-faults-5-*.json", Type: "ninguna", Target: ""},
 	{Label: "follower caído", Pattern: "follower-down-5-*.json", Type: "caida", Target: "seguidor"},
@@ -276,6 +288,132 @@ func buildDescriptiveRows(rows []runRow) ([]descriptiveRow, error) {
 	return result, nil
 }
 
+func metricValues(rows []runRow, scenario, metricName string) ([]float64, error) {
+	for _, metric := range descriptiveMetrics {
+		if metric.Name != metricName {
+			continue
+		}
+		values := make([]float64, 0)
+		for _, row := range rows {
+			if row.Scenario != scenario {
+				continue
+			}
+			value, available := metric.Value(row)
+			if available {
+				values = append(values, value)
+			}
+		}
+		if len(values) == 0 {
+			return nil, fmt.Errorf("%s/%s: no hay observaciones disponibles", scenario, metricName)
+		}
+		return values, nil
+	}
+	return nil, fmt.Errorf("métrica desconocida: %s", metricName)
+}
+
+func buildEffectRows(rows []runRow, replicas int, confidence float64, analysisSeed int64) ([]effectRow, error) {
+	const baseline = "sin fallas"
+	result := make([]effectRow, 0, (len(scenarios)-1)*len(descriptiveMetrics))
+	for _, scenario := range scenarios[1:] {
+		for _, metric := range descriptiveMetrics {
+			baselineValues, err := metricValues(rows, baseline, metric.Name)
+			if err != nil {
+				return nil, err
+			}
+			scenarioValues, err := metricValues(rows, scenario.Label, metric.Name)
+			if err != nil {
+				return nil, err
+			}
+			bootstrapSeed := experiment.DeriveAnalysisSeed(analysisSeed, scenario.Label, metric.Name)
+			estimate, err := experiment.EstimateBootstrapEffects(baselineValues, scenarioValues, experiment.BootstrapConfig{
+				Replicas:   replicas,
+				Confidence: confidence,
+				Seed:       bootstrapSeed,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("%s/%s: %w", scenario.Label, metric.Name, err)
+			}
+			result = append(result, effectRow{
+				Baseline:      baseline,
+				Scenario:      scenario.Label,
+				Metric:        metric.Name,
+				Unit:          metric.Unit,
+				AnalysisSeed:  analysisSeed,
+				BootstrapSeed: bootstrapSeed,
+				Replicas:      replicas,
+				Confidence:    confidence,
+				Estimate:      estimate,
+			})
+		}
+	}
+	return result, nil
+}
+
+func writeEffectsCSV(path string, rows []effectRow) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	writer := csv.NewWriter(file)
+	writeErr := writer.Write([]string{
+		"baseline",
+		"scenario",
+		"metric",
+		"unit",
+		"n_baseline",
+		"n_scenario",
+		"baseline_median",
+		"scenario_median",
+		"median_difference",
+		"median_difference_ci_low",
+		"median_difference_ci_high",
+		"relative_change_percent",
+		"cliffs_delta",
+		"cliffs_delta_ci_low",
+		"cliffs_delta_ci_high",
+		"bootstrap_replicas",
+		"confidence_level",
+		"analysis_seed",
+		"bootstrap_seed",
+	})
+	for _, row := range rows {
+		if writeErr != nil {
+			break
+		}
+		e := row.Estimate
+		writeErr = writer.Write([]string{
+			row.Baseline,
+			row.Scenario,
+			row.Metric,
+			row.Unit,
+			strconv.Itoa(e.BaselineN),
+			strconv.Itoa(e.ScenarioN),
+			strconv.FormatFloat(e.BaselineMedian, 'f', -1, 64),
+			strconv.FormatFloat(e.ScenarioMedian, 'f', -1, 64),
+			strconv.FormatFloat(e.MedianDifference, 'f', -1, 64),
+			strconv.FormatFloat(e.MedianDifferenceCILow, 'f', -1, 64),
+			strconv.FormatFloat(e.MedianDifferenceCIHigh, 'f', -1, 64),
+			formatFloat(e.RelativeChangePercent),
+			strconv.FormatFloat(e.CliffsDelta, 'f', -1, 64),
+			strconv.FormatFloat(e.CliffsDeltaCILow, 'f', -1, 64),
+			strconv.FormatFloat(e.CliffsDeltaCIHigh, 'f', -1, 64),
+			strconv.Itoa(row.Replicas),
+			strconv.FormatFloat(row.Confidence, 'f', -1, 64),
+			strconv.FormatInt(row.AnalysisSeed, 10),
+			strconv.FormatInt(row.BootstrapSeed, 10),
+		})
+	}
+	writer.Flush()
+	if writeErr == nil {
+		writeErr = writer.Error()
+	}
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
+}
+
 func writeDescriptiveCSV(path string, rows []descriptiveRow) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
@@ -358,6 +496,10 @@ func run() error {
 	dir := flag.String("dir", "", "directorio con los JSON crudos de la campaña")
 	output := flag.String("output", "", "archivo CSV nuevo para las métricas por run")
 	descriptiveOutput := flag.String("descriptive-output", "", "archivo CSV nuevo para estadística descriptiva")
+	effectsOutput := flag.String("effects-output", "", "archivo CSV nuevo para estimaciones de efecto")
+	bootstrapReplicas := flag.Int("bootstrap-replicas", 100000, "número de réplicas bootstrap")
+	confidenceLevel := flag.Float64("confidence-level", 0.95, "nivel de confianza bootstrap")
+	analysisSeed := flag.Int64("analysis-seed", 20260912, "semilla maestra del análisis estadístico")
 	runs := flag.Int("runs", 30, "número esperado de runs válidos por escenario")
 	revision := flag.String("revision", finalRevision, "revisión Git experimental esperada")
 	flag.Parse()
@@ -370,6 +512,17 @@ func run() error {
 	}
 	if *descriptiveOutput != "" && *output == *descriptiveOutput {
 		return fmt.Errorf("-output y -descriptive-output deben ser archivos diferentes")
+	}
+	if *effectsOutput != "" && (*effectsOutput == *output || *effectsOutput == *descriptiveOutput) {
+		return fmt.Errorf("-effects-output debe ser diferente de las otras salidas")
+	}
+	if *effectsOutput != "" {
+		if *bootstrapReplicas < 1 {
+			return fmt.Errorf("-bootstrap-replicas debe ser mayor que cero")
+		}
+		if *confidenceLevel <= 0 || *confidenceLevel >= 1 {
+			return fmt.Errorf("-confidence-level debe estar entre cero y uno")
+		}
 	}
 	if *runs < 1 {
 		return fmt.Errorf("-runs debe ser mayor que cero")
@@ -395,14 +548,30 @@ func run() error {
 			return fmt.Errorf("no se pudo escribir %s: %w", *descriptiveOutput, err)
 		}
 	}
+	var effectRows []effectRow
+	if *effectsOutput != "" {
+		effectRows, err = buildEffectRows(rows, *bootstrapReplicas, *confidenceLevel, *analysisSeed)
+		if err != nil {
+			return err
+		}
+		if err := writeEffectsCSV(*effectsOutput, effectRows); err != nil {
+			return fmt.Errorf("no se pudo escribir %s: %w", *effectsOutput, err)
+		}
+	}
 	printVerification(summaries)
 	fmt.Printf("Runs extraídos: %d\n", len(rows))
-	if *descriptiveOutput == "" {
+	if *descriptiveOutput == "" && *effectsOutput == "" {
 		fmt.Printf("CSV: %s\n", *output)
 	} else {
 		fmt.Printf("CSV por run: %s\n", *output)
-		fmt.Printf("Descriptivos: %d filas\n", len(descriptiveRows))
-		fmt.Printf("CSV descriptivo: %s\n", *descriptiveOutput)
+		if *descriptiveOutput != "" {
+			fmt.Printf("Descriptivos: %d filas\n", len(descriptiveRows))
+			fmt.Printf("CSV descriptivo: %s\n", *descriptiveOutput)
+		}
+		if *effectsOutput != "" {
+			fmt.Printf("Efectos: %d comparaciones\n", len(effectRows))
+			fmt.Printf("CSV de efectos: %s\n", *effectsOutput)
+		}
 	}
 	return nil
 }
