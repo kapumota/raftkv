@@ -9,6 +9,9 @@ verificar la integridad de la evidencia, reproducir históricamente G4,
 reproducir byte a byte el análisis H2 y distinguir reproducción computacional
 de una nueva replicación experimental.
 
+El documento [RESULTS.md](RESULTS.md) resume los resultados descriptivos e
+inferenciales de la campaña final y enlaza las figuras reproducibles de H5.
+
 ## Escenarios
 
 | Archivo | Objetivo | Falla programada | Restauración programada | Fin |
