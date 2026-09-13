@@ -42,11 +42,57 @@ type scenarioSummary struct {
 	Summary experiment.RepeatedBenchmarkSummary
 }
 
+type descriptiveRow struct {
+	Scenario string
+	Metric   string
+	Unit     string
+	Summary  experiment.DescriptiveStatistics
+}
+
+type descriptiveMetric struct {
+	Name  string
+	Unit  string
+	Value func(runRow) (float64, bool)
+}
+
 var scenarios = []scenarioSpec{
 	{Label: "sin fallas", Pattern: "normal-faults-5-*.json", Type: "ninguna", Target: ""},
 	{Label: "follower caído", Pattern: "follower-down-5-*.json", Type: "caida", Target: "seguidor"},
 	{Label: "leader caído", Pattern: "leader-down-5-*.json", Type: "caida", Target: "lider"},
 	{Label: "partición de leader", Pattern: "leader-partition-5-*.json", Type: "particion", Target: "lider"},
+}
+
+var descriptiveMetrics = []descriptiveMetric{
+	{Name: "throughput", Unit: "writes/s", Value: func(row runRow) (float64, bool) {
+		if row.Metrics.Throughput == nil {
+			return 0, false
+		}
+		return *row.Metrics.Throughput, true
+	}},
+	{Name: "latency_p50_ms", Unit: "ms", Value: func(row runRow) (float64, bool) {
+		if row.Metrics.LatencyP50 == nil {
+			return 0, false
+		}
+		return *row.Metrics.LatencyP50, true
+	}},
+	{Name: "latency_p95_ms", Unit: "ms", Value: func(row runRow) (float64, bool) {
+		if row.Metrics.LatencyP95 == nil {
+			return 0, false
+		}
+		return *row.Metrics.LatencyP95, true
+	}},
+	{Name: "latency_p99_ms", Unit: "ms", Value: func(row runRow) (float64, bool) {
+		if row.Metrics.LatencyP99 == nil {
+			return 0, false
+		}
+		return *row.Metrics.LatencyP99, true
+	}},
+	{Name: "uncertain_writes", Unit: "count", Value: func(row runRow) (float64, bool) {
+		return float64(row.Metrics.Uncertain), true
+	}},
+	{Name: "omitted_operations", Unit: "count", Value: func(row runRow) (float64, bool) {
+		return float64(row.Metrics.Omitted), true
+	}},
 }
 
 func loadRun(path string) (runFile, error) {
@@ -201,6 +247,87 @@ func writeCSV(path string, rows []runRow) error {
 	return closeErr
 }
 
+func buildDescriptiveRows(rows []runRow) ([]descriptiveRow, error) {
+	result := make([]descriptiveRow, 0, len(scenarios)*len(descriptiveMetrics))
+	for _, scenario := range scenarios {
+		for _, metric := range descriptiveMetrics {
+			values := make([]float64, 0)
+			for _, row := range rows {
+				if row.Scenario != scenario.Label {
+					continue
+				}
+				value, available := metric.Value(row)
+				if available {
+					values = append(values, value)
+				}
+			}
+			summary, err := experiment.SummarizeDescriptive(values)
+			if err != nil {
+				return nil, fmt.Errorf("%s/%s: %w", scenario.Label, metric.Name, err)
+			}
+			result = append(result, descriptiveRow{
+				Scenario: scenario.Label,
+				Metric:   metric.Name,
+				Unit:     metric.Unit,
+				Summary:  summary,
+			})
+		}
+	}
+	return result, nil
+}
+
+func writeDescriptiveCSV(path string, rows []descriptiveRow) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	writer := csv.NewWriter(file)
+	writeErr := writer.Write([]string{
+		"scenario",
+		"metric",
+		"unit",
+		"n",
+		"min",
+		"q1",
+		"median",
+		"q3",
+		"max",
+		"iqr",
+		"mad",
+		"mean",
+		"stddev",
+	})
+	for _, row := range rows {
+		if writeErr != nil {
+			break
+		}
+		writeErr = writer.Write([]string{
+			row.Scenario,
+			row.Metric,
+			row.Unit,
+			strconv.Itoa(row.Summary.N),
+			strconv.FormatFloat(row.Summary.Min, 'f', -1, 64),
+			strconv.FormatFloat(row.Summary.Q1, 'f', -1, 64),
+			strconv.FormatFloat(row.Summary.Median, 'f', -1, 64),
+			strconv.FormatFloat(row.Summary.Q3, 'f', -1, 64),
+			strconv.FormatFloat(row.Summary.Max, 'f', -1, 64),
+			strconv.FormatFloat(row.Summary.IQR, 'f', -1, 64),
+			strconv.FormatFloat(row.Summary.MAD, 'f', -1, 64),
+			strconv.FormatFloat(row.Summary.Mean, 'f', -1, 64),
+			formatFloat(row.Summary.StdDev),
+		})
+	}
+	writer.Flush()
+	if writeErr == nil {
+		writeErr = writer.Error()
+	}
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
+}
+
 func summaryValue(value *float64) string {
 	if value == nil {
 		return "no disponible"
@@ -230,6 +357,7 @@ func printVerification(summaries []scenarioSummary) {
 func run() error {
 	dir := flag.String("dir", "", "directorio con los JSON crudos de la campaña")
 	output := flag.String("output", "", "archivo CSV nuevo para las métricas por run")
+	descriptiveOutput := flag.String("descriptive-output", "", "archivo CSV nuevo para estadística descriptiva")
 	runs := flag.Int("runs", 30, "número esperado de runs válidos por escenario")
 	revision := flag.String("revision", finalRevision, "revisión Git experimental esperada")
 	flag.Parse()
@@ -239,6 +367,9 @@ func run() error {
 	}
 	if *output == "" {
 		return fmt.Errorf("se requiere -output")
+	}
+	if *descriptiveOutput != "" && *output == *descriptiveOutput {
+		return fmt.Errorf("-output y -descriptive-output deben ser archivos diferentes")
 	}
 	if *runs < 1 {
 		return fmt.Errorf("-runs debe ser mayor que cero")
@@ -254,9 +385,25 @@ func run() error {
 	if err := writeCSV(*output, rows); err != nil {
 		return fmt.Errorf("no se pudo escribir %s: %w", *output, err)
 	}
+	var descriptiveRows []descriptiveRow
+	if *descriptiveOutput != "" {
+		descriptiveRows, err = buildDescriptiveRows(rows)
+		if err != nil {
+			return err
+		}
+		if err := writeDescriptiveCSV(*descriptiveOutput, descriptiveRows); err != nil {
+			return fmt.Errorf("no se pudo escribir %s: %w", *descriptiveOutput, err)
+		}
+	}
 	printVerification(summaries)
 	fmt.Printf("Runs extraídos: %d\n", len(rows))
-	fmt.Printf("CSV: %s\n", *output)
+	if *descriptiveOutput == "" {
+		fmt.Printf("CSV: %s\n", *output)
+	} else {
+		fmt.Printf("CSV por run: %s\n", *output)
+		fmt.Printf("Descriptivos: %d filas\n", len(descriptiveRows))
+		fmt.Printf("CSV descriptivo: %s\n", *descriptiveOutput)
+	}
 	return nil
 }
 
