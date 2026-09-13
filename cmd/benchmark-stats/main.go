@@ -67,6 +67,15 @@ type effectRow struct {
 	Estimate      experiment.EffectEstimate
 }
 
+type comparisonRow struct {
+	Effect          effectRow
+	PermutationSeed int64
+	Permutation     experiment.PermutationResult
+	HolmAdjustedP   *float64
+	FamilySize      int
+	Alpha           float64
+}
+
 var scenarios = []scenarioSpec{
 	{Label: "sin fallas", Pattern: "normal-faults-5-*.json", Type: "ninguna", Target: ""},
 	{Label: "follower caído", Pattern: "follower-down-5-*.json", Type: "caida", Target: "seguidor"},
@@ -349,6 +358,141 @@ func buildEffectRows(rows []runRow, replicas int, confidence float64, analysisSe
 	return result, nil
 }
 
+func buildComparisonRows(rows []runRow, effects []effectRow, replicas int, analysisSeed int64, alpha float64) ([]comparisonRow, error) {
+	if replicas < 1 {
+		return nil, fmt.Errorf("se requiere al menos una permutación")
+	}
+	if alpha <= 0 || alpha >= 1 {
+		return nil, fmt.Errorf("alpha debe estar entre cero y uno")
+	}
+	result := make([]comparisonRow, 0, len(effects))
+	pvalues := make([]*float64, 0, len(effects))
+	for _, effect := range effects {
+		baselineValues, err := metricValues(rows, effect.Baseline, effect.Metric)
+		if err != nil {
+			return nil, err
+		}
+		scenarioValues, err := metricValues(rows, effect.Scenario, effect.Metric)
+		if err != nil {
+			return nil, err
+		}
+		permutationSeed := experiment.DeriveAnalysisSeed(analysisSeed, "permutation", effect.Scenario, effect.Metric)
+		test, err := experiment.MedianPermutationTest(baselineValues, scenarioValues, experiment.PermutationConfig{
+			Replicas: replicas,
+			Seed:     permutationSeed,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%s/%s: %w", effect.Scenario, effect.Metric, err)
+		}
+		result = append(result, comparisonRow{
+			Effect:          effect,
+			PermutationSeed: permutationSeed,
+			Permutation:     test,
+			Alpha:           alpha,
+		})
+		pvalues = append(pvalues, test.PValue)
+	}
+
+	adjusted, err := experiment.HolmAdjust(pvalues)
+	if err != nil {
+		return nil, err
+	}
+	familySize := 0
+	for _, value := range pvalues {
+		if value != nil {
+			familySize++
+		}
+	}
+	for i := range result {
+		result[i].HolmAdjustedP = adjusted[i]
+		result[i].FamilySize = familySize
+	}
+	return result, nil
+}
+
+func writeComparisonsCSV(path string, rows []comparisonRow, permutationReplicas int) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	writer := csv.NewWriter(file)
+	writeErr := writer.Write([]string{
+		"baseline",
+		"scenario",
+		"metric",
+		"unit",
+		"n_baseline",
+		"n_scenario",
+		"baseline_median",
+		"scenario_median",
+		"median_difference",
+		"median_difference_ci_low",
+		"median_difference_ci_high",
+		"relative_change_percent",
+		"cliffs_delta",
+		"cliffs_delta_ci_low",
+		"cliffs_delta_ci_high",
+		"bootstrap_replicas",
+		"confidence_level",
+		"analysis_seed",
+		"bootstrap_seed",
+		"tested",
+		"not_tested_reason",
+		"permutation_replicas",
+		"permutation_seed",
+		"permutation_extreme_count",
+		"permutation_p",
+		"holm_family_size",
+		"holm_adjusted_p",
+		"alpha",
+	})
+	for _, row := range rows {
+		if writeErr != nil {
+			break
+		}
+		e := row.Effect.Estimate
+		writeErr = writer.Write([]string{
+			row.Effect.Baseline,
+			row.Effect.Scenario,
+			row.Effect.Metric,
+			row.Effect.Unit,
+			strconv.Itoa(e.BaselineN),
+			strconv.Itoa(e.ScenarioN),
+			strconv.FormatFloat(e.BaselineMedian, 'f', -1, 64),
+			strconv.FormatFloat(e.ScenarioMedian, 'f', -1, 64),
+			strconv.FormatFloat(e.MedianDifference, 'f', -1, 64),
+			strconv.FormatFloat(e.MedianDifferenceCILow, 'f', -1, 64),
+			strconv.FormatFloat(e.MedianDifferenceCIHigh, 'f', -1, 64),
+			formatFloat(e.RelativeChangePercent),
+			strconv.FormatFloat(e.CliffsDelta, 'f', -1, 64),
+			strconv.FormatFloat(e.CliffsDeltaCILow, 'f', -1, 64),
+			strconv.FormatFloat(e.CliffsDeltaCIHigh, 'f', -1, 64),
+			strconv.Itoa(row.Effect.Replicas),
+			strconv.FormatFloat(row.Effect.Confidence, 'f', -1, 64),
+			strconv.FormatInt(row.Effect.AnalysisSeed, 10),
+			strconv.FormatInt(row.Effect.BootstrapSeed, 10),
+			strconv.FormatBool(row.Permutation.Tested),
+			row.Permutation.Reason,
+			strconv.Itoa(permutationReplicas),
+			strconv.FormatInt(row.PermutationSeed, 10),
+			strconv.Itoa(row.Permutation.ExtremeCount),
+			formatFloat(row.Permutation.PValue),
+			strconv.Itoa(row.FamilySize),
+			formatFloat(row.HolmAdjustedP),
+			strconv.FormatFloat(row.Alpha, 'f', -1, 64),
+		})
+	}
+	writer.Flush()
+	if writeErr == nil {
+		writeErr = writer.Error()
+	}
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
+}
+
 func writeEffectsCSV(path string, rows []effectRow) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
@@ -497,8 +641,11 @@ func run() error {
 	output := flag.String("output", "", "archivo CSV nuevo para las métricas por run")
 	descriptiveOutput := flag.String("descriptive-output", "", "archivo CSV nuevo para estadística descriptiva")
 	effectsOutput := flag.String("effects-output", "", "archivo CSV nuevo para estimaciones de efecto")
+	comparisonsOutput := flag.String("comparisons-output", "", "archivo CSV nuevo para comparaciones inferenciales")
 	bootstrapReplicas := flag.Int("bootstrap-replicas", 100000, "número de réplicas bootstrap")
+	permutationReplicas := flag.Int("permutation-replicas", 100000, "número de permutaciones Monte Carlo")
 	confidenceLevel := flag.Float64("confidence-level", 0.95, "nivel de confianza bootstrap")
+	alpha := flag.Float64("alpha", 0.05, "nivel de referencia para el ajuste Holm")
 	analysisSeed := flag.Int64("analysis-seed", 20260912, "semilla maestra del análisis estadístico")
 	runs := flag.Int("runs", 30, "número esperado de runs válidos por escenario")
 	revision := flag.String("revision", finalRevision, "revisión Git experimental esperada")
@@ -516,12 +663,23 @@ func run() error {
 	if *effectsOutput != "" && (*effectsOutput == *output || *effectsOutput == *descriptiveOutput) {
 		return fmt.Errorf("-effects-output debe ser diferente de las otras salidas")
 	}
-	if *effectsOutput != "" {
+	if *comparisonsOutput != "" && (*comparisonsOutput == *output || *comparisonsOutput == *descriptiveOutput || *comparisonsOutput == *effectsOutput) {
+		return fmt.Errorf("-comparisons-output debe ser diferente de las otras salidas")
+	}
+	if *effectsOutput != "" || *comparisonsOutput != "" {
 		if *bootstrapReplicas < 1 {
 			return fmt.Errorf("-bootstrap-replicas debe ser mayor que cero")
 		}
 		if *confidenceLevel <= 0 || *confidenceLevel >= 1 {
 			return fmt.Errorf("-confidence-level debe estar entre cero y uno")
+		}
+	}
+	if *comparisonsOutput != "" {
+		if *permutationReplicas < 1 {
+			return fmt.Errorf("-permutation-replicas debe ser mayor que cero")
+		}
+		if *alpha <= 0 || *alpha >= 1 {
+			return fmt.Errorf("-alpha debe estar entre cero y uno")
 		}
 	}
 	if *runs < 1 {
@@ -549,18 +707,30 @@ func run() error {
 		}
 	}
 	var effectRows []effectRow
-	if *effectsOutput != "" {
+	if *effectsOutput != "" || *comparisonsOutput != "" {
 		effectRows, err = buildEffectRows(rows, *bootstrapReplicas, *confidenceLevel, *analysisSeed)
 		if err != nil {
 			return err
 		}
+	}
+	if *effectsOutput != "" {
 		if err := writeEffectsCSV(*effectsOutput, effectRows); err != nil {
 			return fmt.Errorf("no se pudo escribir %s: %w", *effectsOutput, err)
 		}
 	}
+	var comparisonRows []comparisonRow
+	if *comparisonsOutput != "" {
+		comparisonRows, err = buildComparisonRows(rows, effectRows, *permutationReplicas, *analysisSeed, *alpha)
+		if err != nil {
+			return err
+		}
+		if err := writeComparisonsCSV(*comparisonsOutput, comparisonRows, *permutationReplicas); err != nil {
+			return fmt.Errorf("no se pudo escribir %s: %w", *comparisonsOutput, err)
+		}
+	}
 	printVerification(summaries)
 	fmt.Printf("Runs extraídos: %d\n", len(rows))
-	if *descriptiveOutput == "" && *effectsOutput == "" {
+	if *descriptiveOutput == "" && *effectsOutput == "" && *comparisonsOutput == "" {
 		fmt.Printf("CSV: %s\n", *output)
 	} else {
 		fmt.Printf("CSV por run: %s\n", *output)
@@ -571,6 +741,16 @@ func run() error {
 		if *effectsOutput != "" {
 			fmt.Printf("Efectos: %d comparaciones\n", len(effectRows))
 			fmt.Printf("CSV de efectos: %s\n", *effectsOutput)
+		}
+		if *comparisonsOutput != "" {
+			tested := 0
+			for _, row := range comparisonRows {
+				if row.Permutation.Tested {
+					tested++
+				}
+			}
+			fmt.Printf("Comparaciones inferenciales: %d (%d testeadas)\n", len(comparisonRows), tested)
+			fmt.Printf("CSV de comparaciones: %s\n", *comparisonsOutput)
 		}
 	}
 	return nil

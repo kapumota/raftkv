@@ -267,3 +267,100 @@ func TestWriteEffectsCSVProducesStableSchema(t *testing.T) {
 		t.Fatal("se sobrescribió un CSV de efectos existente")
 	}
 }
+
+func TestBuildComparisonRowsAddsPermutationAndHolm(t *testing.T) {
+	dir := filepath.Join("..", "..", "experiments", "raw", finalRevision, "final")
+	runs, _, err := collectRuns(dir, 30, finalRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	effects, err := buildEffectRows(runs, 50, 0.95, 20260912)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := buildComparisonRows(runs, effects, 500, 20260912, 0.05)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 18 {
+		t.Fatalf("se esperaban 18 comparaciones y se obtuvieron %d", len(rows))
+	}
+
+	tested := 0
+	for _, row := range rows {
+		if row.Permutation.Tested {
+			tested++
+			if row.Permutation.PValue == nil || row.HolmAdjustedP == nil {
+				t.Fatalf("%s/%s: falta inferencia", row.Effect.Scenario, row.Effect.Metric)
+			}
+			if *row.HolmAdjustedP < *row.Permutation.PValue || *row.HolmAdjustedP > 1 {
+				t.Fatalf("%s/%s: ajuste Holm inválido: p=%v adjusted=%v", row.Effect.Scenario, row.Effect.Metric, *row.Permutation.PValue, *row.HolmAdjustedP)
+			}
+		}
+		wantSeed := experiment.DeriveAnalysisSeed(20260912, "permutation", row.Effect.Scenario, row.Effect.Metric)
+		if row.PermutationSeed != wantSeed {
+			t.Fatalf("%s/%s: semilla de permutación inestable", row.Effect.Scenario, row.Effect.Metric)
+		}
+	}
+	for _, row := range rows {
+		if row.FamilySize != tested {
+			t.Fatalf("tamaño de familia inconsistente: got=%d want=%d", row.FamilySize, tested)
+		}
+	}
+}
+
+func TestWriteComparisonsCSVProducesStableSchema(t *testing.T) {
+	dir := filepath.Join("..", "..", "experiments", "raw", finalRevision, "final")
+	runs, _, err := collectRuns(dir, 30, finalRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	effects, err := buildEffectRows(runs, 20, 0.95, 20260912)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := buildComparisonRows(runs, effects, 50, 20260912, 0.05)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := filepath.Join(t.TempDir(), "comparisons.csv")
+	if err := writeComparisonsCSV(output, rows, 50); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	records, err := csv.NewReader(file).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 19 {
+		t.Fatalf("se esperaban cabecera + 18 filas y se obtuvieron %d registros", len(records))
+	}
+	wantHeader := []string{
+		"baseline", "scenario", "metric", "unit", "n_baseline", "n_scenario",
+		"baseline_median", "scenario_median", "median_difference",
+		"median_difference_ci_low", "median_difference_ci_high", "relative_change_percent",
+		"cliffs_delta", "cliffs_delta_ci_low", "cliffs_delta_ci_high",
+		"bootstrap_replicas", "confidence_level", "analysis_seed", "bootstrap_seed",
+		"tested", "not_tested_reason", "permutation_replicas", "permutation_seed",
+		"permutation_extreme_count", "permutation_p", "holm_family_size", "holm_adjusted_p", "alpha",
+	}
+	if len(records[0]) != len(wantHeader) {
+		t.Fatalf("cabecera de comparaciones con %d columnas; se esperaban %d", len(records[0]), len(wantHeader))
+	}
+	for i := range wantHeader {
+		if records[0][i] != wantHeader[i] {
+			t.Fatalf("cabecera de comparaciones inesperada: %v", records[0])
+		}
+	}
+	if records[1][0] != "sin fallas" || records[1][1] != "follower caído" || records[1][2] != "throughput" || records[1][21] != "50" {
+		t.Fatalf("primera fila de comparaciones inesperada: %v", records[1])
+	}
+	if err := writeComparisonsCSV(output, rows, 50); err == nil {
+		t.Fatal("se sobrescribió un CSV de comparaciones existente")
+	}
+}
