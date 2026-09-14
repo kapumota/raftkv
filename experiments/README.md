@@ -1,216 +1,209 @@
-# Escenarios de inyección de fallas
+### Evaluación experimental reproducible
 
-F1 define el formato declarativo. F2 incorpora el parser y el runner Go para
-Linux y Docker local. La guía [RUNNER.md](RUNNER.md) describe cómo validar
-escenarios y ejecutar experimentos conservando los volúmenes existentes.
+Este directorio contiene configuraciones, evidencia cruda, artefactos derivados,
+metodología y resultados de la evaluación experimental de RaftKV.
 
-La guía [ARTIFACT_REPRODUCTION.md](ARTIFACT_REPRODUCTION.md) documenta cómo
-verificar la integridad de la evidencia, reproducir históricamente G4,
-reproducir byte a byte el análisis H2 y distinguir reproducción computacional
-de una nueva replicación experimental.
+Para la campaña final, las fuentes principales son:
 
-El documento [RESULTS.md](RESULTS.md) resume los resultados descriptivos e
-inferenciales de la campaña final y enlaza las figuras reproducibles de H5.
+- [METHODOLOGY.md](METHODOLOGY.md): protocolo experimental.
+- [STATISTICAL_ANALYSIS.md](STATISTICAL_ANALYSIS.md): plan y análisis H2.
+- [THREATS_TO_VALIDITY.md](THREATS_TO_VALIDITY.md): límites de interpretación.
+- [ARTIFACT_REPRODUCTION.md](ARTIFACT_REPRODUCTION.md): reproducción verificable.
+- [RESULTS.md](RESULTS.md): resultados y figuras finales.
 
-## Escenarios
+[RUNNER.md](RUNNER.md) documenta el runner manual. [BENCHMARKS.md](BENCHMARKS.md)
+conserva la evolución histórica G2/G3 y no sustituye la metodología final.
 
-| Archivo | Objetivo | Falla programada | Restauración programada | Fin |
+#### Escenarios de la campaña final
+
+| Archivo | Objetivo | Falla | Restauración | Fin |
 | --- | --- | --- | --- | --- |
-| `leader_failure.yaml` | Líder | Caída a los 20 s | 30 s | 60 s |
-| `follower_failure.yaml` | Seguidor | Caída a los 20 s | 30 s | 60 s |
-| `leader_partition.yaml` | Líder | Partición a los 20 s | 30 s | 60 s |
-| `recovery.yaml` | Seguidor | Caída a los 15 s | 45 s | 90 s |
+| `normal-faults-5.yaml` | Ninguno | Sin falla | No aplica | 60 s |
+| `follower-down-5.yaml` | Follower | Caída a los 20 s durante 10 s | Aproximadamente 30 s | 60 s |
+| `leader-down-5.yaml` | Leader | Caída a los 20 s durante 10 s | Aproximadamente 30 s | 60 s |
+| `leader-partition-5.yaml` | Leader | Partición a los 20 s durante 10 s | Aproximadamente 30 s | 60 s |
 
-La recuperación prolonga la ausencia del seguidor y deja una ventana posterior
-para observar cómo alcanza el log confirmado. Todos los escenarios mantienen
-carga antes, durante y después de la falla.
+Los cuatro escenarios finales usan cinco nodos, 16 clientes, 2 operaciones por
+segundo y semilla de workload 42.
 
-## Contrato de configuración
+#### Contrato de configuración
 
-Todos los campos son obligatorios. El parser deberá rechazar campos desconocidos,
-claves duplicadas, documentos múltiples y valores con tipos incorrectos.
+El parser rechaza campos desconocidos, claves duplicadas, documentos múltiples y
+valores con tipos incorrectos.
 
-- `version`: entero; la única versión admitida inicialmente será `1`.
-- `nombre`: texto no vacío para identificar el experimento en los resultados.
-- `semilla`: entero no negativo de 64 bits para generar la carga reproducible.
-- `duracion_segundos`: entero positivo; ventana total de generación de carga.
-- `clientes`: entero positivo; máximo de clientes con una operación pendiente cada uno.
-- `operaciones_por_segundo`: entero positivo; tasa objetivo global, no por cliente.
-- `falla.tipo`: `caida` o `particion`.
-- `falla.objetivo`: `lider` o `seguidor`.
-- `falla.instante_segundos`: entero positivo medido desde el inicio de la carga.
-- `falla.duracion_segundos`: entero positivo durante el cual se mantiene la falla.
+Los escenarios versionados utilizan:
 
-La suma del instante y la duración de la falla debe ser menor que la duración
-total, con validación que evite desbordamientos. Debe quedar tiempo tanto antes
-de la falla como después de la restauración.
+- `version`: versión del formato; actualmente `1`.
+- `nombre`: identificador lógico del experimento.
+- `semilla`: entero no negativo para la carga determinista.
+- `nodos`: `3` o `5` según el despliegue.
+- `despliegue`: `local` o `benchmark`.
+- `duracion_segundos`: ventana total de carga.
+- `clientes`: máximo de clientes con una operación pendiente cada uno.
+- `operaciones_por_segundo`: tasa objetivo global.
+- `falla.tipo`: `ninguna`, `caida` o `particion`.
+- `falla.objetivo`: vacío, `lider` o `seguidor` según el tipo.
+- `falla.instante_segundos`: instante programado de la falla.
+- `falla.duracion_segundos`: duración programada de la falla.
 
-La primera versión generará escrituras SET con claves distintas por operación.
-La semilla determina sus datos; los clientes reciben las operaciones en orden
-cíclico. La tasa solicitada no garantiza la tasa alcanzada: si el cliente
-asignado sigue ocupado, la operación programada se registra como omitida por
-saturación, sin acumular una cola ilimitada ni generar una ráfaga posterior.
+La versión 1 genera escrituras `SET` con claves determinadas por escenario,
+semilla y secuencia. Los clientes reciben operaciones en orden cíclico. Si el
+cliente asignado sigue ocupado, la operación se registra como omitida por
+saturación; no se acumula una cola ilimitada.
 
-Los errores y timeouts se registran sin reintentos automáticos en esta primera
-versión. Un timeout no demuestra que la escritura no se haya confirmado.
+Los errores y timeouts se registran sin reintentos automáticos. Un timeout no
+demuestra que una escritura no se haya confirmado.
 
-## Selección y restauración
+#### Selección y restauración
 
-El runner debe esperar que el clúster esté disponible antes de iniciar su reloj.
-En el instante de la falla resolverá el rol solicitado usando el estado actual
-de los nodos. Si no puede identificar un líder único, el experimento termina
-con error; no se sustituye silenciosamente por otro nodo.
+El runner espera disponibilidad del clúster antes de iniciar la ventana de carga.
+Para escenarios dirigidos a roles, resuelve el objetivo a partir del estado
+observado. Si no puede identificar un leader único cuando corresponde, el intento
+termina con error y no se sustituye silenciosamente el objetivo.
 
-Para un seguidor se selecciona el primero por identificador en orden
-lexicográfico entre los seguidores disponibles. El nodo elegido queda fijado:
-la restauración afecta a ese mismo nodo aunque cambien los roles. El resultado
-debe registrar su identificador, término observado y los tiempos reales.
+Para un follower se selecciona de forma determinista entre los followers
+disponibles. El nodo elegido queda fijado para la restauración aunque cambien
+posteriormente los roles.
 
-`caida` significa terminar abruptamente el proceso y volver a iniciar el mismo
-nodo conservando su volumen WAL. `particion` significa cortar su comunicación
-con los demás nodos sin detener el proceso y después restaurar sus enlaces.
+`caida` termina abruptamente el proceso y vuelve a iniciar el mismo nodo.
+`particion` corta su comunicación con los demás nodos y después restaura los
+enlaces.
 
-La duración de la falla se cuenta desde que su aplicación termina correctamente.
-El runner debe registrar cualquier desviación respecto de los tiempos
-programados. Al terminar la ventana de carga deja de emitir operaciones nuevas,
-resuelve las pendientes con plazos acotados y realiza la limpieza necesaria.
-La restauración debe intentarse también ante error o cancelación; si falla,
-el resultado debe indicarlo y no declarar el experimento exitoso.
+La restauración se intenta también ante error o cancelación. Un error de
+restauración queda registrado y evita declarar el experimento exitoso.
 
-## Despliegue y reproducibilidad
+#### Aislamiento entre runs
 
-Las direcciones, contenedores y red pertenecen a la configuración de despliegue,
-no a estos escenarios. El Compose actual usa los nodos `raft-node-1` a
-`raft-node-5`, el puerto interno `8080` y la red lógica `raftnet`; no publica
-puertos HTTP en el host. F2 deberá resolver tanto el acceso HTTP como el control
-de Docker. El nombre efectivo de la red depende del proyecto Compose.
+Hay dos modos distintos que no deben confundirse.
 
-Cada resultado deberá identificar el escenario, la semilla, la revisión de Git,
-el estado inicial de los WAL, los nodos, los eventos reales y las operaciones
-confirmadas, fallidas, de resultado incierto u omitidas. Los experimentos no
-deben borrar volúmenes existentes para preparar su ejecución.
+El runner manual descrito en [RUNNER.md](RUNNER.md) puede trabajar con un
+despliegue existente y conservar sus volúmenes.
 
-Repetir el escenario y la semilla reproduce el plan y los datos de carga.
-No garantiza elecciones, latencias ni intercalados idénticos. La comparación
-entre ejecuciones requiere condiciones iniciales equivalentes y registrar las
-desviaciones observadas.
-
-## G4 - Resultados reproducibles
-
-G4 separa la ejecución del experimento de la reproducción de sus resultados.
-
-```text
-experiments/
-|-- configs/
-|-- raw/
-|-- processed/
-`-- README.md
-```
-
-`configs/` contiene los escenarios versionados. `raw/` contiene los JSON producidos
-por el runner. `processed/` contiene únicamente artefactos derivados de esos JSON.
-
-Cada ejecución se identifica por la revisión Git y por `CAMPAIGN`. Esto permite
-conservar, por ejemplo, un smoke test y la campaña final sin sobrescribir evidencia.
-
-### Ejecutar la campaña
-
-La campaña final por defecto ejecuta 30 repeticiones de cada uno de los cuatro
-escenarios G3, es decir, 120 ejecuciones.
+La campaña reproducible ejecutada por:
 
 ```bash
 make experiment
 ```
 
-Equivale a `RUNS=30 CAMPAIGN=final`.
+usa `scripts/benchmark-failures.sh`. Cada run ejecuta `docker compose down -v`
+antes de levantar el siguiente despliegue. Por tanto, los WAL y el estado
+persistente comienzan vacíos en cada repetición de la campaña.
 
-Para una prueba corta independiente:
+Los JSON permanecen fuera de los volúmenes Docker y se conservan en
+`experiments/raw/`.
+
+#### Ejecutar una nueva campaña
+
+Por defecto:
+
+```bash
+make experiment
+```
+
+equivale a:
+
+```text
+RUNS=30
+CAMPAIGN=final
+```
+
+Para una campaña corta independiente:
 
 ```bash
 make experiment RUNS=2 CAMPAIGN=smoke
 ```
 
-`make experiment` exige un árbol Git limpio, valida el proyecto, obtiene la revisión
-Git completa y guarda los resultados en:
+`make experiment` exige un árbol Git limpio, ejecuta `make validate`, fija la
+revisión completa y rechaza sobrescribir una campaña existente.
+
+Los resultados se guardan en:
 
 ```text
 experiments/raw/<revision-git>/<campana>/
+experiments/processed/<revision-git>/<campana>/
 ```
 
-Los contenidos de `raw/` y `processed/` están ignorados mientras se ejecutan
-smoke tests y campañas. Esto es deliberado: cada ejecución debe observar la misma
-revisión y un árbol Git limpio, y los artefactos derivados de un smoke no deben
-bloquear una campaña posterior. Una vez terminada y validada la campaña, la
-evidencia puede versionarse explícitamente:
+Las campañas locales nuevas están ignoradas por Git. Una campaña que deba
+convertirse en evidencia se versiona explícitamente:
 
 ```bash
 git add -f experiments/raw/<revision-git>/final
 git add -f experiments/processed/<revision-git>/final
 ```
 
-No elimine ni sobrescriba una campaña existente. Use otro valor de `CAMPAIGN` si
-necesita conservar otra ejecución de la misma revisión.
+No se deben editar manualmente los JSON crudos ni sobrescribir campañas
+existentes.
 
-### Reproducir resultados procesados
+#### Campaña final congelada
 
-`make reproduce` no inicia contenedores ni vuelve a ejecutar RaftKV. Procesa
-exclusivamente los JSON existentes:
-
-```bash
-make reproduce
-```
-
-Para una campaña específica:
-
-```bash
-make reproduce REVISION=<revision-git> RUNS=30 CAMPAIGN=final
-```
-
-La revisión solicitada debe existir y ser ancestro de `HEAD`. Se permiten commits
-posteriores únicamente cuando sus cambios están confinados a `experiments/raw/`
-y `experiments/processed/`. Si cambió código o configuración, la reproducción se
-rechaza para evitar procesar evidencia histórica con una implementación distinta.
-
-La salida se guarda en:
+La campaña final publicada corresponde a la revisión:
 
 ```text
-experiments/processed/<revision-git>/<campana>/
-|-- summary.txt
-|-- raw-manifest.sha256
-|-- config-manifest.sha256
-`-- metadata.txt
+8ba7a131c4f452aac014a4c628794062fa1a8c9b
 ```
 
-`summary.txt` se genera con `cmd/benchmark-failures`, por lo que conserva las
-validaciones G3: número exacto de ejecuciones, misma revisión Git, árbol limpio,
-configuración comparable y restauración completada en los escenarios con falla.
+Contiene:
 
-`raw-manifest.sha256` fija criptográficamente cada JSON crudo.
-`config-manifest.sha256` fija los cuatro escenarios YAML utilizados.
-`metadata.txt` registra revisión, campaña y tamaño esperado.
+```text
+4 escenarios
+30 runs válidos por escenario
+120 runs válidos
+```
 
-### Comprobar reproducción
+La evidencia conserva además los intentos inválidos e interrumpidos descritos en
+la metodología y en la guía de reproducción.
 
-Después de versionar una campaña y sus resultados procesados en un commit de
-evidencia:
+#### Reproducir y analizar evidencia
+
+`make reproduce` procesa JSON existentes; no vuelve a ejecutar RaftKV.
+
+Sin embargo, la campaña histórica final no debe reproducirse desde el `HEAD` del
+release como si ese `HEAD` fuera la revisión experimental. Para la evidencia
+congelada siga exactamente:
+
+[ARTIFACT_REPRODUCTION.md](ARTIFACT_REPRODUCTION.md)
+
+La guía documenta la revisión de evidencia y el uso de `git worktree` para la
+reproducción histórica de G4.
+
+El análisis estadístico H2 puede verificarse con:
 
 ```bash
-make reproduce REVISION=<revision-experimental> RUNS=30 CAMPAIGN=final
-git diff --exit-code -- experiments/processed/<revision-experimental>/final
+make analyze \
+  REVISION=8ba7a131c4f452aac014a4c628794062fa1a8c9b \
+  RUNS=30 \
+  CAMPAIGN=final
 ```
 
-Si el segundo comando no produce diferencias, los artefactos procesados se
-reconstruyeron de forma idéntica desde los datos crudos.
+Los resultados derivados se encuentran bajo:
 
-### Versionar la evidencia final
-
-Después de revisar la campaña de 30 repeticiones:
-
-```bash
-git add -f experiments/raw/<revision-git>/final
-git add -f experiments/processed/<revision-git>/final
-git diff --check
+```text
+experiments/processed/
+  8ba7a131c4f452aac014a4c628794062fa1a8c9b/
+    final/
 ```
 
-Los datos crudos deben conservarse sin edición manual. Si se necesita corregir el
-pipeline experimental, debe generarse una nueva campaña desde una nueva revisión.
+#### Integridad
+
+La evidencia utiliza manifests SHA-256 para vincular:
+
+```text
+JSON crudos
+configuraciones
+fuentes del análisis
+artefactos estadísticos
+figuras
+```
+
+Las figuras reproducibles están en `experiments/figures/`.
+
+La guía autoritativa para comprobar checksums y reconstruir artefactos es
+[ARTIFACT_REPRODUCTION.md](ARTIFACT_REPRODUCTION.md).
+
+#### Interpretación
+
+Repetir una semilla reproduce el plan y los datos de carga, no elecciones,
+latencias ni interleavings idénticos.
+
+La campaña experimental cuantifica comportamiento bajo el protocolo declarado.
+No constituye una demostración formal de safety ni de liveness.
