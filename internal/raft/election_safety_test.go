@@ -1,6 +1,9 @@
 package raft
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestVotePersistsAcrossRestartAndRejectsDifferentCandidateSameTerm(t *testing.T) {
 	dataDir := t.TempDir()
@@ -166,6 +169,13 @@ func TestRejectedStaleLogDoesNotConsumeVote(t *testing.T) {
 
 	node := NewNode("node-1", nil, wal, NewTransport(), nil)
 
+	// Un candidato con log obsoleto y término mayor debe actualizar currentTerm,
+	// pero no reiniciar el election timer si el voto finalmente se rechaza.
+	node.mu.Lock()
+	node.electionResetAt = time.Unix(0, 0)
+	observedResetAt := node.electionResetAt
+	node.mu.Unlock()
+
 	stale := node.HandleRequestVote(RequestVoteArgs{
 		Term:         4,
 		CandidateID:  "candidate-stale",
@@ -184,6 +194,17 @@ func TestRejectedStaleLogDoesNotConsumeVote(t *testing.T) {
 		t.Fatalf("un candidato obsoleto consumió el voto: %+v", afterStale)
 	}
 
+	node.mu.Lock()
+	resetAfterReject := node.electionResetAt
+	node.mu.Unlock()
+	if !resetAfterReject.Equal(observedResetAt) {
+		t.Fatalf(
+			"un RequestVote rechazado reinició el election timer: antes=%v, después=%v",
+			observedResetAt,
+			resetAfterReject,
+		)
+	}
+
 	fresh := node.HandleRequestVote(RequestVoteArgs{
 		Term:         4,
 		CandidateID:  "candidate-fresh",
@@ -192,6 +213,17 @@ func TestRejectedStaleLogDoesNotConsumeVote(t *testing.T) {
 	})
 	if !fresh.VoteGranted || fresh.Term != 4 {
 		t.Fatalf("no se concedió voto al candidato actualizado: respuesta=%+v", fresh)
+	}
+
+	node.mu.Lock()
+	resetAfterGrant := node.electionResetAt
+	node.mu.Unlock()
+	if !resetAfterGrant.After(observedResetAt) {
+		t.Fatalf(
+			"un voto concedido no reinició el election timer: antes=%v, después=%v",
+			observedResetAt,
+			resetAfterGrant,
+		)
 	}
 
 	afterFresh, err := wal.LoadState()

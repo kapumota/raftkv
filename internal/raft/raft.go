@@ -117,18 +117,38 @@ func (n *Node) electionTicker() {
 		case <-ticker.C:
 			n.mu.Lock()
 			state := n.state
-			elapsed := time.Since(n.electionResetAt)
+			resetAt := n.electionResetAt
+			elapsed := time.Since(resetAt)
 			timeout := n.electionTimeout
 			n.mu.Unlock()
 			if state != Leader && elapsed >= timeout {
-				n.startElection()
+				n.startElectionIfTimedOut(resetAt)
 			}
 		}
 	}
 }
 
 func (n *Node) startElection() {
+	n.startElectionWithResetGuard(nil)
+}
+
+func (n *Node) startElectionIfTimedOut(expectedResetAt time.Time) {
+	n.startElectionWithResetGuard(&expectedResetAt)
+}
+
+// startElectionWithResetGuard conserva startElection como primitiva explícita.
+// El guard solo se usa desde electionTicker para descartar una observación de
+// timeout que quedó obsoleta por un heartbeat o cambio de estado posterior.
+func (n *Node) startElectionWithResetGuard(expectedResetAt *time.Time) {
 	n.mu.Lock()
+	if expectedResetAt != nil {
+		if n.state == Leader ||
+			!n.electionResetAt.Equal(*expectedResetAt) ||
+			time.Since(n.electionResetAt) < n.electionTimeout {
+			n.mu.Unlock()
+			return
+		}
+	}
 	n.state = Candidate
 	n.currentTerm++
 	n.votedFor = n.id
@@ -201,7 +221,9 @@ func (n *Node) becomeFollower(term int) {
 	n.currentTerm = term
 	n.votedFor = ""
 	_ = n.saveState()
-	n.resetElectionTimer()
+	// El timer se reinicia únicamente cuando se recibe AppendEntries válido o
+	// cuando se concede un voto. Un RequestVote rechazado no debe posponer una
+	// elección local posterior.
 	if wasLeader {
 		n.failPendingCommits(ErrNotLeader)
 	}
