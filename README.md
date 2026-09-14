@@ -1,175 +1,466 @@
 ### RaftKV
 
-RaftKV es un clúster experimental de cinco nodos escrito en Go. Implementa
-Raft desde cero, sin `hashicorp/raft` ni otra biblioteca de consenso, y se
-orquesta con Docker Compose.
+[![CI](https://github.com/kapumota/raftkv/actions/workflows/ci.yml/badge.svg)](https://github.com/kapumota/raftkv/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/tag/kapumota/raftkv?sort=semver&label=release)](https://github.com/kapumota/raftkv/tags)
+[![Go](https://img.shields.io/badge/Go-1.22-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License](https://img.shields.io/github/license/kapumota/raftkv)](LICENSE)
 
-El proyecto está orientado al estudio de sistemas distribuidos y forma parte
-de una ruta de aprendizaje aplicada a infraestructura fintech. No pretende
-ser una base de datos lista para producción.
+RaftKV es un key-value store distribuido experimental escrito en Go que
+implementa Raft desde cero, sin `hashicorp/raft` ni otra biblioteca de
+consenso. El clúster de referencia utiliza cinco nodos, WAL persistente,
+Docker Compose, inyección de fallas, evaluación reproducible y pruebas
+dirigidas de invariantes de correctness.
+
+`v0.1.0` es el primer release experimental congelado del proyecto. Su objetivo
+es ofrecer un artefacto pequeño, auditable y reproducible para estudiar
+consenso, replicación, failover, persistencia y evaluación de sistemas
+distribuidos.
+
+No pretende ser una base de datos lista para producción ni una implementación
+formalmente verificada de Raft.
 
 #### Estado del proyecto
 
-Estado actual: desarrollo experimental.
+La versión `v0.1.0` consolida tres capas de evidencia:
 
-La implementación base incluye elección de líder, replicación del log,
-persistencia parcial mediante WAL, aplicación de comandos comprometidos y un
-generador de carga. Antes de considerar una versión estable todavía se deben
-completar pruebas de fallas, recuperación completa del estado, confirmación de
-escrituras después del commit y lecturas linealizables.
+```text
+implementación Raft
+        |
+        v
+pruebas dirigidas de correctness
+        |
+        v
+evaluación experimental reproducible
+```
 
-#### Qué implementa
+El repositorio incluye evidencia ejecutable para Election Safety, persistencia
+de voto, Log Matching, quorum commit, Leader Completeness, State Machine
+Safety, recuperación desde WAL, lecturas protegidas por quorum y liveness bajo
+un failure model explícito.
 
-- Elección de líder con timeouts aleatorios y votación por mayoría.
-- Replicación del log mediante `AppendEntries`, con retroceso de `nextIndex`
-  cuando un follower rechaza una entrada.
-- Avance de `commitIndex` por mayoría, respetando la regla de Raft de
-  comprometer directamente solo entradas del término actual del líder.
-- Write-ahead log persistente en disco, con un volumen Docker por nodo.
-- Recuperación de `currentTerm`, `votedFor` y log al reiniciar el proceso.
-- Máquina de estados KV con operaciones `SET` y `GET`.
-- Particiones de red reales mediante desconexión temporal de un contenedor de
-  la red Docker.
-- Cliente de carga que intenta localizar al líder mediante reintentos.
+La regla de interpretación es:
 
-#### Simplificaciones deliberadas
+```text
+implementado != probado formalmente
+testeado     != demostrado
+observado    != garantizado
+```
 
-- No hay snapshots ni compactación del log. El WAL puede crecer sin límite.
-- No hay cambios dinámicos de membresía. El clúster está fijado en cinco nodos.
-- `GET` no es linealizable. Lee el estado local del nodo consultado y puede
-  observar un valor atrasado respecto del líder.
-- `POST /kv/set` confirma que el líder aceptó la propuesta, pero todavía no
-  espera a que la entrada quede comprometida por mayoría.
-- La recuperación después de reiniciar restaura el estado persistente de Raft,
-  pero todavía no reconstruye completamente la máquina de estados KV.
-- El cliente descubre al líder por prueba y error. Cuando recibe
-  `no_es_lider`, intenta otro nodo.
+#### Características principales
 
-Estas limitaciones están documentadas para que la evolución del proyecto sea
-verificable y no se presenten garantías que la implementación todavía no
-ofrece.
+- Elección de `leader` con timeouts aleatorios y votación por mayoría.
+- Persistencia de `currentTerm`, `votedFor`, `commitIndex` y log en WAL.
+- Restricción de voto según frescura de `LastLogTerm` y `LastLogIndex`.
+- Replicación mediante `AppendEntries`.
+- Reparación de sufijos conflictivos con `nextIndex` y `matchIndex`.
+- Protección del prefijo ya confirmado.
+- Avance de `commitIndex` únicamente con quorum.
+- Confirmación HTTP de escrituras solo después del commit.
+- Barrera `NOOP` por término para confirmar liderazgo.
+- `ReadIndex` antes de servir lecturas KV.
+- Reconstrucción de la máquina de estados desde el prefijo confirmado.
+- Deduplicación de efectos mediante `ClientID` y `RequestID` en la máquina de
+  estados.
+- Failover, catch-up y recuperación después de particiones.
+- Campañas de fallas reproducibles.
+- Análisis estadístico reproducible y figuras deterministas.
 
-#### Convenciones del repositorio
+La deduplicación forma parte de la semántica interna de comandos Raft y no se
+expone actualmente como un contrato exactly-once general de la API HTTP.
 
-- Identificadores, tipos, funciones y métodos de Go se mantienen en inglés.
-- Comentarios y mensajes dirigidos a personas se escriben en español.
-- Los términos propios del protocolo, como `RequestVote`, `AppendEntries`,
-  `leader`, `follower`, `commitIndex` y `nextIndex`, se conservan cuando forman
-  parte del vocabulario técnico o de identificadores del código.
-- La documentación evita símbolos tipográficos innecesarios. Para relaciones
-  textuales se usa `->` cuando corresponde.
-- Los títulos Markdown usan `###` y los subtítulos usan `####`.
+#### Alcance y límites
 
-#### Estructura
+`v0.1.0` mantiene deliberadamente un alcance compacto:
+
+- Membresía fija. No hay joint consensus ni cambios dinámicos de configuración.
+- No hay snapshots ni compactación del log.
+- El WAL puede crecer sin límite.
+- El failure model considera nodos no bizantinos y almacenamiento local
+  operativo.
+- La campaña experimental final se ejecutó en un único host con Docker bridge.
+- No se modelan exhaustivamente delay, reorder, packet loss o corrupción
+  arbitraria del almacenamiento.
+- No existe todavía un checker externo de linealizabilidad sobre historiales
+  concurrentes completos.
+- No existe todavía una especificación TLA+/PlusCal ni model checking.
+- No se afirma idoneidad para cargas de producción.
+
+Para el alcance exacto consulta
+[`EVIDENCE_MATRIX.md`](EVIDENCE_MATRIX.md).
+
+#### Arquitectura
+
+```text
+cliente
+   |
+   v
+HTTP /kv/set, /kv/get
+   |
+   v
+leader Raft
+   |
+   +---- RequestVote / AppendEntries ----+
+   |                                     |
+   v                                     v
+followers                            WAL por nodo
+   |                                     |
+   +-------------- quorum ---------------+
+                    |
+                    v
+               commitIndex
+                    |
+                    v
+          máquina de estados KV
+```
+
+El clúster Docker de referencia contiene cinco servicios `raft-node-*` y un
+`client-driver`. Cada nodo mantiene un volumen WAL independiente sobre la red
+bridge `raftnet`.
+
+#### Estructura del repositorio
 
 ```text
 raftkv/
 |-- .github/workflows/ci.yml
 |-- cmd/
+|   |-- benchmark-compare/
+|   |-- benchmark-failures/
+|   |-- benchmark-figures/
+|   |-- benchmark-stats/
 |   |-- client-driver/
+|   |-- experiment-metrics/
+|   |-- experiment-runner/
 |   `-- raftnode/
 |-- docker/
+|-- experiments/
+|   |-- configs/
+|   |-- figures/
+|   |-- processed/
+|   |-- raw/
+|   |-- ARTIFACT_REPRODUCTION.md
+|   |-- METHODOLOGY.md
+|   |-- RESULTS.md
+|   |-- STATISTICAL_ANALYSIS.md
+|   `-- THREATS_TO_VALIDITY.md
 |-- internal/
+|   |-- experiment/
 |   |-- kv/
 |   `-- raft/
 |-- scripts/
+|-- CORRECTNESS_INVARIANTS.md
+|-- EVIDENCE_MATRIX.md
+|-- LIVENESS_MODEL.md
 |-- docker-compose.yml
 |-- go.mod
+|-- LICENSE
 |-- Makefile
 `-- README.md
 ```
 
+#### Requisitos
+
+Para desarrollo y validación:
+
+```text
+Go 1.22.x
+GNU Make
+Bash
+Git
+```
+
+Para ejecutar el clúster y nuevas campañas:
+
+```text
+Docker Engine
+Docker Compose
+```
+
+La reproducción histórica tiene requisitos específicos en
+[`experiments/ARTIFACT_REPRODUCTION.md`](experiments/ARTIFACT_REPRODUCTION.md).
+
 #### Validación local
+
+La validación principal es:
 
 ```bash
 make validate
 ```
 
-El comando ejecuta formato, análisis estático, pruebas con detector de carreras
-y compilación completa.
+Ejecuta:
 
-También se pueden ejecutar los pasos por separado:
-
-```bash
-gofmt -w ./cmd ./internal
+```text
+gofmt check
 go vet ./...
 go test -race ./...
 go build ./...
+bash -n de scripts experimentales
 ```
+
+También están disponibles:
+
+```bash
+make fmt-check
+make vet
+make test
+make test-race
+make build
+```
+
+GitHub Actions ejecuta CI en cada `push` y `pull_request`.
 
 #### Levantar el clúster
 
 ```bash
-docker compose up --build
+make up
 ```
 
-Docker Compose construye las imágenes de `raft-node` y `client-driver`, levanta
-los cinco nodos con volúmenes WAL independientes y arranca el generador de
-carga. La elección del líder ocurre automáticamente.
-
-#### Ver el estado de un nodo
-
-Desde el propio contenedor:
+Para seguir los logs:
 
 ```bash
-docker compose exec raft-node-1 curl -s http://localhost:8080/status
+make logs
 ```
 
-La respuesta contiene el identificador del nodo, estado Raft, término actual,
-voto persistido e índice de commit.
-
-#### Escribir y leer directamente
+Para detenerlo:
 
 ```bash
-docker compose exec raft-node-1 curl -s -X POST \
-  http://localhost:8080/kv/set \
-  -H 'Content-Type: application/json' \
-  -d '{"Key":"nombre","Value":"kapumota"}'
-
-docker compose exec raft-node-1 curl -s \
-  'http://localhost:8080/kv/get?key=nombre'
+make down
 ```
 
-Si el nodo consultado no es líder, `/kv/set` devuelve HTTP 421 con:
+#### Encontrar el leader
+
+Consulta cada nodo:
+
+```bash
+for i in 1 2 3 4 5; do
+  docker compose exec "raft-node-$i"     curl -s http://localhost:8080/status
+  echo
+done
+```
+
+Una respuesta típica:
+
+```json
+{
+  "commit_index": 3,
+  "id": "raft-node-2",
+  "state": "leader",
+  "term": 2,
+  "voted_for": "raft-node-2"
+}
+```
+
+#### Escribir un valor
+
+Suponiendo que `raft-node-2` es el leader:
+
+```bash
+docker compose exec raft-node-2 curl -s -X POST   http://localhost:8080/kv/set   -H 'Content-Type: application/json'   -d '{"key":"nombre","value":"kapumota"}'
+```
+
+Una escritura confirmada responde:
+
+```json
+{"estado":"confirmado"}
+```
+
+La respuesta `200 OK` se produce después de que `Propose` complete con éxito.
+
+Un nodo que no es leader devuelve:
+
+```text
+503 Service Unavailable
+```
+
+con:
 
 ```json
 {"error":"no_es_lider"}
 ```
 
-#### Provocar una partición real
+Si no se alcanza quorum dentro del timeout:
+
+```text
+504 Gateway Timeout
+```
+
+con:
+
+```json
+{"error":"tiempo_de_espera_agotado"}
+```
+
+#### Leer un valor
+
+Sobre el leader:
 
 ```bash
-chmod +x scripts/partition.sh
+docker compose exec raft-node-2 curl -s   'http://localhost:8080/kv/get?key=nombre'
+```
+
+Respuesta:
+
+```json
+{"key":"nombre","value":"kapumota"}
+```
+
+Antes de consultar la máquina de estados, `/kv/get` ejecuta `ReadIndex` y
+confirma liderazgo mediante quorum.
+
+Un follower devuelve `503`. Un leader que no puede confirmar quorum dentro del
+timeout devuelve `504`.
+
+#### Inyectar una partición manual
+
+```bash
 ./scripts/partition.sh raft-node-3 20
 ```
 
-El script desconecta temporalmente `raft-node-3` de la red Docker y después lo
-reconecta. Si el nodo aislado era líder, el resto del clúster debe elegir un
-nuevo líder siempre que conserve mayoría.
+Este script sirve para demostraciones manuales. Las campañas reproducibles usan
+el runner y las configuraciones bajo `experiments/`.
 
-Para comprobar el nombre de la red:
+#### Correctness
 
-```bash
-docker network ls | grep raftnet
+La Fase I documenta la correspondencia entre propiedad, mecanismo y evidencia:
+
+- [`CORRECTNESS_INVARIANTS.md`](CORRECTNESS_INVARIANTS.md)
+- [`EVIDENCE_MATRIX.md`](EVIDENCE_MATRIX.md)
+- [`LIVENESS_MODEL.md`](LIVENESS_MODEL.md)
+
+Las propiedades evaluadas incluyen:
+
+```text
+Election Safety
+Log Matching
+Leader Completeness
+State Machine Safety
+quorum commit
+crash recovery
+ReadIndex
+liveness condicional
 ```
 
-#### Qué observar durante una partición
+Las pruebas aportan evidencia dirigida. No constituyen formal verification.
 
-- Tiempo entre la partición del líder y la elección de uno nuevo.
-- Cambio del líder anterior a follower cuando recibe un término superior.
-- Convergencia de los logs después de recuperar la conectividad.
-- Evolución de escrituras, fallos y latencia reportada por `client-driver`.
-- Ausencia de divergencias en comandos ya comprometidos por mayoría.
+#### Evaluación experimental
 
-#### Trabajo pendiente
+La campaña final usa la revisión experimental:
 
-La siguiente iteración debe priorizar corrección y validación antes de ampliar
-funcionalidades:
+```text
+8ba7a131c4f452aac014a4c628794062fa1a8c9b
+```
 
-1. Esperar el commit por mayoría antes de confirmar una escritura.
-2. Reconstruir la máquina de estados después de un reinicio.
-3. Implementar lecturas linealizables.
-4. Añadir identificadores de solicitud y supresión de duplicados.
-5. Ampliar pruebas de elección, partición, reinicio y convergencia.
-6. Añadir benchmarks reproducibles de throughput, latencia y failover.
-7. Evaluar snapshots solo después de cerrar las garantías anteriores.
+Configuración principal:
+
+```text
+5 nodos
+30 runs válidos por escenario
+4 escenarios
+120 runs válidos
+60 segundos por run
+16 clientes
+2 operaciones/s
+seed de workload = 42
+```
+
+Escenarios:
+
+```text
+sin fallas
+follower caído
+leader caído
+partición de leader
+```
+
+Resultados:
+
+[`experiments/RESULTS.md`](experiments/RESULTS.md)
+
+Metodología:
+
+[`experiments/METHODOLOGY.md`](experiments/METHODOLOGY.md)
+
+Amenazas a la validez:
+
+[`experiments/THREATS_TO_VALIDITY.md`](experiments/THREATS_TO_VALIDITY.md)
+
+#### Análisis estadístico reproducible
+
+```bash
+make analyze   REVISION=8ba7a131c4f452aac014a4c628794062fa1a8c9b   RUNS=30   CAMPAIGN=final
+```
+
+Incluye:
+
+```text
+mediana e IQR
+MAD
+diferencia de medianas
+Cliff's delta
+IC bootstrap 95 %
+prueba de permutación bilateral
+corrección de Holm
+```
+
+#### Reproducción del artefacto
+
+No ejecutes `make reproduce` sobre `main` suponiendo que representa la revisión
+experimental original.
+
+La reproducción histórica de G4 usa una revisión de evidencia específica y un
+`git worktree`.
+
+Sigue:
+
+[`experiments/ARTIFACT_REPRODUCTION.md`](experiments/ARTIFACT_REPRODUCTION.md)
+
+La guía distingue:
+
+```text
+integridad de evidencia
+reproducción histórica de G4
+reproducción computacional de H2
+nueva replicación experimental
+```
+
+#### Resultados principales
+
+Dentro del protocolo experimental estudiado:
+
+- La caída de un follower no conserva diferencias robustas frente al baseline
+  después del ajuste de Holm.
+- La caída del leader reduce throughput, incrementa p95 y p99 e incrementa las
+  operaciones inciertas.
+- La partición del leader reduce throughput e incrementa las operaciones
+  inciertas.
+
+Estos resultados describen la campaña evaluada y no demuestran universalmente
+propiedades de safety o liveness.
+
+#### Convenciones
+
+- Identificadores, tipos, funciones y métodos de Go se mantienen en inglés.
+- Comentarios, documentación y mensajes dirigidos a personas se escriben en
+  español.
+- Los términos `RequestVote`, `AppendEntries`, `leader`, `follower`,
+  `commitIndex`, `nextIndex` y `matchIndex` se conservan.
+- Los títulos principales usan `###` y los subtítulos `####`.
+- La evidencia experimental no se presenta como garantía formal.
+
+#### Roadmap después de v0.1.0
+
+`v0.1.0` congela el artefacto actual. Las extensiones posteriores quedan fuera
+del release:
+
+```text
+TLA+ / PlusCal
+model checking
+checker externo de linealizabilidad
+snapshots y log compaction
+membresía dinámica
+fallas de red con delay/reorder/loss
+evaluación multi-host
+```
+
+#### Licencia
+
+RaftKV se distribuye bajo Apache License 2.0. Consulta [`LICENSE`](LICENSE).
