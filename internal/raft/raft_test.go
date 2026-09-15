@@ -27,6 +27,68 @@ func newTestNode(t *testing.T, apply ApplyFunc) *Node {
 	return NewNode("node-1", nil, wal, NewTransport(), apply)
 }
 
+func TestElectionTimeoutResetPreventsStaleElection(t *testing.T) {
+	node := newTestNode(t, nil)
+	t.Cleanup(func() { close(node.stopCh) })
+
+	node.mu.Lock()
+	node.currentTerm = 3
+	node.state = Follower
+	node.votedFor = ""
+	node.electionResetAt = time.Now().Add(-time.Second)
+	node.electionTimeout = time.Millisecond
+	observedResetAt := node.electionResetAt
+	node.mu.Unlock()
+
+	// El ticker ya observó el timeout anterior como vencido. Antes de iniciar
+	// la elección llega un heartbeat y mueve electionResetAt.
+	node.mu.Lock()
+	node.resetElectionTimer()
+	node.mu.Unlock()
+
+	node.startElectionIfTimedOut(observedResetAt)
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if node.state != Follower || node.currentTerm != 3 {
+		t.Fatalf(
+			"se inició una elección desde un timeout obsoleto: estado=%s, término=%d",
+			node.state,
+			node.currentTerm,
+		)
+	}
+	if node.votedFor != "" {
+		t.Fatalf("un timeout obsoleto consumió el voto: %q", node.votedFor)
+	}
+	if len(node.log) != 0 {
+		t.Fatalf("un timeout obsoleto modificó el log: %+v", node.log)
+	}
+}
+
+func TestExplicitElectionStillStartsBeforeTimeout(t *testing.T) {
+	node := newTestNode(t, nil)
+	t.Cleanup(func() { close(node.stopCh) })
+
+	node.mu.Lock()
+	node.currentTerm = 3
+	node.resetElectionTimer()
+	node.mu.Unlock()
+
+	node.startElection()
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if node.state != Leader {
+		t.Fatalf("la elección explícita no produjo un leader: estado=%s", node.state)
+	}
+	if node.currentTerm != 4 {
+		t.Fatalf("término inesperado: se obtuvo %d, se esperaba 4", node.currentTerm)
+	}
+	if node.votedFor != node.id {
+		t.Fatalf("voto inesperado después de elección explícita: %q", node.votedFor)
+	}
+}
+
 func TestFollowerRejectsProposal(t *testing.T) {
 	node := newTestNode(t, nil)
 

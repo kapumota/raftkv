@@ -31,3 +31,6 @@ jobs:
 
       - name: Compilar
         run: go build ./...
+
+      - name: Verificar scripts
+        run: make scripts-check

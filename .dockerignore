@@ -6,6 +6,7 @@ bin
 build
 dist
 data
+experiments
 *.out
 *.test
 coverage.out

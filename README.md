@@ -1,175 +1,619 @@
 ### RaftKV
 
-RaftKV es un clúster experimental de cinco nodos escrito en Go. Implementa
-Raft desde cero, sin `hashicorp/raft` ni otra biblioteca de consenso, y se
-orquesta con Docker Compose.
+[![CI](https://github.com/kapumota/raftkv/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kapumota/raftkv/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/tag/kapumota/raftkv?sort=semver&label=release)](https://github.com/kapumota/raftkv/tags)
+[![Go](https://img.shields.io/badge/Go-1.22-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License](https://img.shields.io/github/license/kapumota/raftkv)](LICENSE)
 
-El proyecto está orientado al estudio de sistemas distribuidos y forma parte
-de una ruta de aprendizaje aplicada a infraestructura fintech. No pretende
-ser una base de datos lista para producción.
+RaftKV es un key-value store distribuido experimental escrito en Go que
+implementa Raft desde cero, sin `hashicorp/raft` ni otra biblioteca de consenso.
+El proyecto combina implementación del protocolo, persistencia mediante WAL,
+inyección de fallas, pruebas dirigidas de correctness y evaluación experimental
+reproducible.
 
-#### Estado del proyecto
+`v0.1.0` es el primer release experimental del proyecto. Su objetivo es ofrecer
+un artefacto pequeño, auditable y reproducible para estudiar consenso,
+replicación, failover, recuperación y evaluación de sistemas distribuidos.
 
-Estado actual: desarrollo experimental.
+RaftKV no se presenta como una base de datos lista para producción ni como una
+implementación formalmente verificada de Raft.
 
-La implementación base incluye elección de líder, replicación del log,
-persistencia parcial mediante WAL, aplicación de comandos comprometidos y un
-generador de carga. Antes de considerar una versión estable todavía se deben
-completar pruebas de fallas, recuperación completa del estado, confirmación de
-escrituras después del commit y lecturas linealizables.
+#### Estado de v0.1.0
 
-#### Qué implementa
+El release consolida tres capas:
 
-- Elección de líder con timeouts aleatorios y votación por mayoría.
-- Replicación del log mediante `AppendEntries`, con retroceso de `nextIndex`
-  cuando un follower rechaza una entrada.
-- Avance de `commitIndex` por mayoría, respetando la regla de Raft de
-  comprometer directamente solo entradas del término actual del líder.
-- Write-ahead log persistente en disco, con un volumen Docker por nodo.
-- Recuperación de `currentTerm`, `votedFor` y log al reiniciar el proceso.
-- Máquina de estados KV con operaciones `SET` y `GET`.
-- Particiones de red reales mediante desconexión temporal de un contenedor de
-  la red Docker.
-- Cliente de carga que intenta localizar al líder mediante reintentos.
+```text
+implementación Raft
+        |
+        v
+evidencia ejecutable de correctness
+        |
+        v
+evaluación experimental reproducible
+```
 
-#### Simplificaciones deliberadas
+La regla de interpretación del proyecto es:
 
-- No hay snapshots ni compactación del log. El WAL puede crecer sin límite.
-- No hay cambios dinámicos de membresía. El clúster está fijado en cinco nodos.
-- `GET` no es linealizable. Lee el estado local del nodo consultado y puede
-  observar un valor atrasado respecto del líder.
-- `POST /kv/set` confirma que el líder aceptó la propuesta, pero todavía no
-  espera a que la entrada quede comprometida por mayoría.
-- La recuperación después de reiniciar restaura el estado persistente de Raft,
-  pero todavía no reconstruye completamente la máquina de estados KV.
-- El cliente descubre al líder por prueba y error. Cuando recibe
-  `no_es_lider`, intenta otro nodo.
+```text
+implementado != probado formalmente
+testeado     != demostrado
+observado    != garantizado
+```
 
-Estas limitaciones están documentadas para que la evolución del proyecto sea
-verificable y no se presenten garantías que la implementación todavía no
-ofrece.
+La matriz completa de propiedades y evidencia está en
+[`EVIDENCE_MATRIX.md`](EVIDENCE_MATRIX.md).
 
-#### Convenciones del repositorio
+#### Características
 
-- Identificadores, tipos, funciones y métodos de Go se mantienen en inglés.
-- Comentarios y mensajes dirigidos a personas se escriben en español.
-- Los términos propios del protocolo, como `RequestVote`, `AppendEntries`,
-  `leader`, `follower`, `commitIndex` y `nextIndex`, se conservan cuando forman
-  parte del vocabulario técnico o de identificadores del código.
-- La documentación evita símbolos tipográficos innecesarios. Para relaciones
-  textuales se usa `->` cuando corresponde.
-- Los títulos Markdown usan `###` y los subtítulos usan `####`.
+RaftKV `v0.1.0` incluye:
 
-#### Estructura
+- elección de `leader` con timeouts aleatorios y mayoría;
+- persistencia de `currentTerm`, `votedFor`, `commitIndex` y log;
+- restricción de voto según frescura de `LastLogTerm` y `LastLogIndex`;
+- replicación mediante `AppendEntries`;
+- reparación de sufijos conflictivos con `nextIndex` y `matchIndex`;
+- protección del prefijo confirmado;
+- avance de `commitIndex` por quorum;
+- restricción de commit directo a entradas del término actual;
+- barrera `NOOP` del término del leader;
+- `ConfirmLeadership` y `ReadIndex`;
+- confirmación HTTP de escrituras únicamente después de `Propose` exitoso;
+- reconstrucción de la máquina de estados desde el log confirmado;
+- deduplicación de efectos mediante `ClientID` y `RequestID`;
+- failover, catch-up y recuperación después de particiones;
+- pruebas con detector de carreras;
+- campañas de fallas reproducibles;
+- análisis estadístico reproducible;
+- figuras SVG deterministas y manifests SHA-256.
+
+#### Alcance y límites
+
+El release mantiene deliberadamente un alcance compacto:
+
+- membresía fija;
+- sin joint consensus;
+- sin snapshots;
+- sin compactación del log;
+- WAL potencialmente creciente;
+- nodos no bizantinos;
+- almacenamiento local operativo dentro del failure model;
+- evaluación experimental en un único host con Docker bridge;
+- sin modelado exhaustivo de delay, reorder o packet loss;
+- sin corrupción arbitraria de almacenamiento;
+- sin checker externo de linealizabilidad sobre historiales concurrentes;
+- sin especificación TLA+/PlusCal;
+- sin model checking exhaustivo;
+- sin garantías de uso en producción.
+
+La deduplicación de la máquina de estados requiere `ClientID` estable,
+`RequestID` creciente y una solicitud pendiente por cliente. No constituye una
+garantía exactly-once general para cualquier cliente HTTP.
+
+#### Arquitectura
+
+```text
+cliente
+   |
+   v
+HTTP /kv/set, /kv/get
+   |
+   v
+leader Raft
+   |
+   +----------- RequestVote / AppendEntries -----------+
+   |                                                   |
+   v                                                   v
+followers                                          WAL por nodo
+   |                                                   |
+   +---------------------- quorum ----------------------+
+                              |
+                              v
+                         commitIndex
+                              |
+                              v
+                    máquina de estados KV
+```
+
+El despliegue Docker de referencia usa cinco nodos `raft-node-*`, volúmenes WAL
+independientes y la red bridge `raftnet`.
+
+#### Estructura del repositorio
 
 ```text
 raftkv/
-|-- .github/workflows/ci.yml
+|-- .github/
+|   `-- workflows/
+|       `-- ci.yml
 |-- cmd/
+|   |-- benchmark-compare/
+|   |-- benchmark-failures/
+|   |-- benchmark-figures/
+|   |-- benchmark-stats/
 |   |-- client-driver/
+|   |-- experiment-metrics/
+|   |-- experiment-runner/
 |   `-- raftnode/
 |-- docker/
+|-- experiments/
+|   |-- configs/
+|   |-- figures/
+|   |-- processed/
+|   |-- raw/
+|   |-- ARTIFACT_REPRODUCTION.md
+|   |-- BENCHMARKS.md
+|   |-- METHODOLOGY.md
+|   |-- METRICS.md
+|   |-- README.md
+|   |-- RESULTS.md
+|   |-- RUNNER.md
+|   |-- STATISTICAL_ANALYSIS.md
+|   `-- THREATS_TO_VALIDITY.md
 |-- internal/
+|   |-- experiment/
 |   |-- kv/
 |   `-- raft/
 |-- scripts/
+|-- CORRECTNESS_INVARIANTS.md
+|-- EVIDENCE_MATRIX.md
+|-- LIVENESS_MODEL.md
 |-- docker-compose.yml
 |-- go.mod
+|-- go.sum
+|-- LICENSE
 |-- Makefile
 `-- README.md
 ```
 
+#### Requisitos
+
+Para desarrollo y validación:
+
+```text
+Go 1.22.x
+GNU Make
+Bash
+Git
+```
+
+Para ejecutar el clúster y nuevas campañas:
+
+```text
+Docker Engine
+Docker Compose
+```
+
+La reproducción histórica de la campaña final tiene requisitos adicionales
+documentados en
+[`experiments/ARTIFACT_REPRODUCTION.md`](experiments/ARTIFACT_REPRODUCTION.md).
+
 #### Validación local
+
+La validación principal es:
 
 ```bash
 make validate
 ```
 
-El comando ejecuta formato, análisis estático, pruebas con detector de carreras
-y compilación completa.
+Incluye:
 
-También se pueden ejecutar los pasos por separado:
-
-```bash
-gofmt -w ./cmd ./internal
+```text
+gofmt check
 go vet ./...
 go test -race ./...
 go build ./...
+bash -n de los scripts experimentales
 ```
 
-#### Levantar el clúster
+También se pueden ejecutar targets individuales:
 
 ```bash
-docker compose up --build
+make fmt-check
+make vet
+make test
+make test-race
+make build
+make scripts-check
 ```
 
-Docker Compose construye las imágenes de `raft-node` y `client-driver`, levanta
-los cinco nodos con volúmenes WAL independientes y arranca el generador de
-carga. La elección del líder ocurre automáticamente.
+GitHub Actions ejecuta CI para cada `push` y `pull_request`.
 
-#### Ver el estado de un nodo
-
-Desde el propio contenedor:
+#### Levantar el clúster completo
 
 ```bash
-docker compose exec raft-node-1 curl -s http://localhost:8080/status
+make up
 ```
 
-La respuesta contiene el identificador del nodo, estado Raft, término actual,
-voto persistido e índice de commit.
+Este target ejecuta el Compose principal, incluidos los cinco nodos y
+`client-driver`.
 
-#### Escribir y leer directamente
+Para seguir los logs:
 
 ```bash
-docker compose exec raft-node-1 curl -s -X POST \
+make logs
+```
+
+Para detener el despliegue:
+
+```bash
+make down
+```
+
+#### Demo manual sin client-driver
+
+Para probar la API sin carga generada por `client-driver`:
+
+```bash
+docker compose up -d --build \
+  raft-node-1 \
+  raft-node-2 \
+  raft-node-3 \
+  raft-node-4 \
+  raft-node-5
+```
+
+Consulta los cinco nodos:
+
+```bash
+for i in 1 2 3 4 5; do
+  docker compose exec "raft-node-$i" \
+    curl -s http://localhost:8080/status
+  echo
+done
+```
+
+Una respuesta típica es:
+
+```json
+{
+  "commit_index": 3,
+  "id": "raft-node-2",
+  "state": "leader",
+  "term": 2,
+  "voted_for": "raft-node-2"
+}
+```
+
+Usa el nodo cuyo campo `state` sea `leader` para las operaciones KV.
+
+#### Escrituras
+
+Suponiendo que `raft-node-2` es el leader:
+
+```bash
+docker compose exec raft-node-2 curl -s -X POST \
   http://localhost:8080/kv/set \
   -H 'Content-Type: application/json' \
-  -d '{"Key":"nombre","Value":"kapumota"}'
-
-docker compose exec raft-node-1 curl -s \
-  'http://localhost:8080/kv/get?key=nombre'
+  -d '{"key":"nombre","value":"kapumota"}'
 ```
 
-Si el nodo consultado no es líder, `/kv/set` devuelve HTTP 421 con:
+Una escritura confirmada responde:
+
+```json
+{"estado":"confirmado"}
+```
+
+`200 OK` se devuelve después de que `Propose` termina con éxito.
+
+Si el nodo no es leader:
+
+```text
+503 Service Unavailable
+```
 
 ```json
 {"error":"no_es_lider"}
 ```
 
-#### Provocar una partición real
+Si no puede alcanzarse quorum dentro del timeout de la API:
 
-```bash
-chmod +x scripts/partition.sh
-./scripts/partition.sh raft-node-3 20
+```text
+504 Gateway Timeout
 ```
 
-El script desconecta temporalmente `raft-node-3` de la red Docker y después lo
-reconecta. Si el nodo aislado era líder, el resto del clúster debe elegir un
-nuevo líder siempre que conserve mayoría.
-
-Para comprobar el nombre de la red:
-
-```bash
-docker network ls | grep raftnet
+```json
+{"error":"tiempo_de_espera_agotado"}
 ```
 
-#### Qué observar durante una partición
+#### Lecturas
 
-- Tiempo entre la partición del líder y la elección de uno nuevo.
-- Cambio del líder anterior a follower cuando recibe un término superior.
-- Convergencia de los logs después de recuperar la conectividad.
-- Evolución de escrituras, fallos y latencia reportada por `client-driver`.
-- Ausencia de divergencias en comandos ya comprometidos por mayoría.
+Sobre el leader:
 
-#### Trabajo pendiente
+```bash
+docker compose exec raft-node-2 curl -s \
+  'http://localhost:8080/kv/get?key=nombre'
+```
 
-La siguiente iteración debe priorizar corrección y validación antes de ampliar
-funcionalidades:
+Respuesta:
 
-1. Esperar el commit por mayoría antes de confirmar una escritura.
-2. Reconstruir la máquina de estados después de un reinicio.
-3. Implementar lecturas linealizables.
-4. Añadir identificadores de solicitud y supresión de duplicados.
-5. Ampliar pruebas de elección, partición, reinicio y convergencia.
-6. Añadir benchmarks reproducibles de throughput, latencia y failover.
-7. Evaluar snapshots solo después de cerrar las garantías anteriores.
+```json
+{"key":"nombre","value":"kapumota"}
+```
+
+Antes de consultar la máquina de estados, `/kv/get` ejecuta `ReadIndex` y
+confirma liderazgo mediante quorum.
+
+Un follower devuelve `503`. Un leader que no puede confirmar quorum dentro del
+timeout devuelve `504`.
+
+#### Correctness
+
+La Fase I documenta la correspondencia entre propiedad, mecanismo de producción
+y evidencia ejecutable.
+
+Documentos principales:
+
+- [`CORRECTNESS_INVARIANTS.md`](CORRECTNESS_INVARIANTS.md): inventario de
+  propiedades e invariantes;
+- [`EVIDENCE_MATRIX.md`](EVIDENCE_MATRIX.md): matriz final de trazabilidad;
+- [`LIVENESS_MODEL.md`](LIVENESS_MODEL.md): failure model y alcance de las
+  afirmaciones de progreso.
+
+La evidencia cubre, dentro de su alcance:
+
+| Propiedad | Evidencia |
+| --- | --- |
+| Election Safety | Implementación, unit, integración y fallas |
+| Persistencia de voto y frescura | Implementación, unit e integración |
+| Log Matching | Implementación, unit, integración y fallas |
+| Prefijo confirmado inmutable | Implementación, unit, integración y fallas |
+| Commit por quorum | Implementación, unit, integración y fallas |
+| Leader Completeness | Implementación, integración y fallas |
+| State Machine Safety | Implementación, unit, integración y fallas |
+| Crash recovery | Implementación, unit, integración y fallas |
+| Lecturas protegidas por quorum | Implementación, unit, integración y fallas |
+| Liveness | Condicional al failure model declarado |
+
+Ninguna de estas filas debe interpretarse como una demostración formal.
+
+#### Failure model de liveness
+
+La afirmación de progreso requiere, entre otros supuestos:
+
+```text
+membresía fija
+nodos no bizantinos
+WAL local operativo
+mayoría disponible
+comunicación eventualmente estable entre esa mayoría
+```
+
+Por tanto:
+
+```text
+sin quorum:
+    no se exige progreso
+
+quorum + comunicación eventualmente estable:
+    se espera recuperación y progreso en el modelo probado
+```
+
+Consulta [`LIVENESS_MODEL.md`](LIVENESS_MODEL.md) para el alcance completo.
+
+#### Evaluación experimental
+
+La campaña final corresponde a la revisión:
+
+```text
+8ba7a131c4f452aac014a4c628794062fa1a8c9b
+```
+
+Diseño:
+
+```text
+5 nodos
+4 escenarios
+30 runs válidos por escenario
+120 runs válidos
+60 segundos por run
+16 clientes
+2 operaciones/s
+seed de workload = 42
+falla aproximadamente en t=20 s durante 10 s
+```
+
+Escenarios:
+
+```text
+sin fallas
+follower caído
+leader caído
+partición de leader
+```
+
+La unidad estadística es el run completo.
+
+El análisis incluye:
+
+```text
+18 comparaciones inferenciales
+100000 réplicas bootstrap
+100000 permutaciones
+confidence level = 0.95
+alpha = 0.05
+corrección de Holm
+analysis seed = 20260912
+```
+
+#### Resultados principales
+
+De las 18 comparaciones planificadas, 6 mantienen evidencia después de la
+corrección de Holm.
+
+| Escenario | Hallazgos con evidencia después de Holm |
+| --- | --- |
+| Follower caído | Ninguna de las seis métricas |
+| Leader caído | Throughput, p95, p99, operaciones inciertas |
+| Partición de leader | Throughput, operaciones inciertas |
+
+Para la caída del leader:
+
+```text
+throughput: -8.82 %
+p95:        +41.72 %
+p99:        +57.73 %
+inciertas:  +11 en diferencia de medianas
+```
+
+Para la partición del leader:
+
+```text
+throughput: -8.40 %
+inciertas:  +10 en diferencia de medianas
+```
+
+Los resultados completos, intervalos bootstrap, Cliff's delta y valores p
+ajustados están en
+[`experiments/RESULTS.md`](experiments/RESULTS.md).
+
+Estos resultados describen exclusivamente el protocolo experimental estudiado.
+No demuestran universalmente safety, liveness ni capacidad máxima del sistema.
+
+#### Documentación experimental
+
+La documentación autoritativa de la campaña final es:
+
+- [`experiments/METHODOLOGY.md`](experiments/METHODOLOGY.md): diseño y protocolo;
+- [`experiments/STATISTICAL_ANALYSIS.md`](experiments/STATISTICAL_ANALYSIS.md):
+  análisis H2;
+- [`experiments/THREATS_TO_VALIDITY.md`](experiments/THREATS_TO_VALIDITY.md):
+  límites de validez;
+- [`experiments/ARTIFACT_REPRODUCTION.md`](experiments/ARTIFACT_REPRODUCTION.md):
+  integridad y reproducción;
+- [`experiments/RESULTS.md`](experiments/RESULTS.md): resultados finales.
+
+[`experiments/BENCHMARKS.md`](experiments/BENCHMARKS.md) conserva la evolución
+histórica de G2/G3. [`experiments/RUNNER.md`](experiments/RUNNER.md) documenta
+ejecuciones manuales del runner.
+
+#### Nueva campaña experimental
+
+Para ejecutar una campaña nueva desde la revisión actual:
+
+```bash
+make experiment RUNS=2 CAMPAIGN=smoke
+```
+
+Para la campaña por defecto:
+
+```bash
+make experiment
+```
+
+`make experiment` exige un árbol Git limpio, ejecuta validación y no sobrescribe
+una campaña existente.
+
+Cada run de la campaña automatizada parte de un despliegue con volúmenes nuevos.
+Los resultados quedan bajo:
+
+```text
+experiments/raw/<revision>/<campaign>/
+experiments/processed/<revision>/<campaign>/
+```
+
+Las nuevas campañas locales están ignoradas por Git hasta que se decida
+versionarlas explícitamente.
+
+#### Reproducción del artefacto publicado
+
+No debe ejecutarse `make reproduce` sobre el `HEAD` de `v0.1.0` suponiendo que
+ese código es la revisión experimental original.
+
+La campaña final fue generada desde otra revisión y su reproducción histórica
+usa un `git worktree` y una revisión de evidencia específica.
+
+Sigue exactamente:
+
+[`experiments/ARTIFACT_REPRODUCTION.md`](experiments/ARTIFACT_REPRODUCTION.md)
+
+La guía distingue:
+
+```text
+verificación de integridad
+reproducción histórica de G4
+reproducción computacional de H2
+nueva replicación experimental
+```
+
+El análisis estadístico congelado puede comprobarse con:
+
+```bash
+make analyze \
+  REVISION=8ba7a131c4f452aac014a4c628794062fa1a8c9b \
+  RUNS=30 \
+  CAMPAIGN=final
+```
+
+#### Integridad de la evidencia
+
+La campaña conserva manifests SHA-256 para vincular:
+
+```text
+JSON crudos
+configuraciones
+fuentes del análisis
+artefactos estadísticos
+figuras
+```
+
+Las figuras deterministas se encuentran en:
+
+```text
+experiments/figures/
+```
+
+La verificación completa está documentada en
+[`experiments/ARTIFACT_REPRODUCTION.md`](experiments/ARTIFACT_REPRODUCTION.md).
+
+#### CI
+
+El workflow:
+
+```text
+.github/workflows/ci.yml
+```
+
+ejecuta:
+
+```text
+gofmt check
+go vet
+go test -race ./...
+go build ./...
+make scripts-check
+```
+
+El badge `CI` de la cabecera refleja el estado de `main`.
+
+El badge `Release` usa los tags SemVer del repositorio. Después de crear el tag
+`v0.1.0`, mostrará automáticamente esa versión.
+
+#### Convenciones
+
+- Identificadores, tipos, funciones y métodos Go se mantienen en inglés.
+- Comentarios, documentación y mensajes dirigidos a personas se escriben en
+  español.
+- `RequestVote`, `AppendEntries`, `leader`, `follower`, `commitIndex`,
+  `lastApplied`, `nextIndex` y `matchIndex` se conservan como vocabulario Raft.
+- Los títulos principales de documentación usan `###` y los subtítulos `####`.
+- Se evita presentar evidencia experimental como garantía formal.
+
+#### Roadmap posterior a v0.1.0
+
+`v0.1.0` congela el alcance actual. Las extensiones posteriores quedan fuera de
+este release:
+
+```text
+TLA+ / PlusCal
+model checking
+checker externo de linealizabilidad
+snapshots y log compaction
+membresía dinámica
+fallas con delay/reorder/loss
+evaluación multi-host
+```
+
+#### Licencia
+
+RaftKV se distribuye bajo Apache License 2.0.
+
+Consulta [`LICENSE`](LICENSE).

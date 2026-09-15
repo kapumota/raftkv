@@ -12,6 +12,11 @@ data/
 *.jsonl
 state.json
 
+# Resultados de campañas locales
+# La evidencia final se versiona explícitamente con git add -f.
+experiments/raw/
+experiments/processed/
+
 # Variables y archivos locales
 .env
 .env.*
